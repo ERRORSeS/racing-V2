@@ -57,7 +57,7 @@ export function raceEducationBlocker(w,h,f){
  return null;
 }
 export function startHorse(w,horseId,pace='Balanced'){
- const h=ownedHorse(w,horseId);return createStartingPlan(w,h,pace);
+ const h=ownedHorse(w,horseId),plan=createStartingPlan(w,h,pace);h.autoTrain=true;return plan;
 }
 export function createStartingPlan(w,h,pace='Balanced'){
  if(!['Gentle','Balanced','Sensitive'].includes(pace))throw Error('Choose Gentle, Balanced or Sensitive pace.');
@@ -65,6 +65,14 @@ export function createStartingPlan(w,h,pace='Balanced'){
  const p=h.youngstock.starting;if(p.status==='complete')throw Error('Starting already completed.');
  p.status='active';p.pace=pace;p.startDay??=w.day;p.trainerId=w.staff.find(s=>s.owner===h.owner&&s.role==='Trainer')?.id||'Stable education staff';
  event(w,'development',`${h.name}: ${pace} starting plan ${p.log.length?'resumed':'created'}; next checkpoint ${STARTING_STEPS[p.step]}.`,h.id);return p;
+}
+export function startingSessionReason(w,h){
+ const p=h.youngstock.starting;
+ if(!['active','blocked_medical'].includes(p.status))return p.status==='paused'?'Resume the paused starting plan first.':p.status==='complete'?'Starting already completed.':'Start the plan or enable Auto Training first.';
+ const reason=startingBlocker(w,h);if(reason)return reason;
+ if(h.youngstock.lastSessionDay===w.day||h.lastTrainingDay===w.day)return 'A session was already completed today. Advance to the next eligible day.';
+ if(w.day%4===0)return 'Scheduled rest day. Advance to the next day for starting.';
+ return null;
 }
 export function startingSession(w,h){
  const y=h.youngstock,p=y.starting;if(p.status!=='active'&&p.status!=='blocked_medical')return false;
