@@ -1,6 +1,11 @@
+import { scheduleIndex } from './reservations.js';
+import { WORKOUTS, SKILL_DEFINITIONS } from './skill-definitions.js';
+import { usableCeiling } from './development.js';
+import { traitModifiers, observeTrait } from './traits.js';
+import { recoveryDay } from './recovery.js';
 import { RULES, FEEDS, MOODS, MOOD_FACTORS, SEVERITIES, SKILLS, age, clamp } from './rules.js';
 import { random, integer, pick, id } from './random.js';
-import { event, charge, ownedHorse } from './core.js';
+import { event, charge, ownedHorse, scratchEntries } from './core.js';
 
 export function feedWarnings(h, day) {
   const warnings=[];
@@ -21,23 +26,17 @@ export function setCare(w,horseId,plan) {
   if(!FEEDS.includes(plan.feed)||!Number.isFinite(plan.turnout)||plan.turnout<0||plan.turnout>24)throw Error('Choose a valid feed and turnout from 0–24 hours.');
   if(!['Snaffle','Eggbutt','D-ring'].includes(plan.bit)||!['None','Blinkers','Cheekpieces','Hood'].includes(plan.accessory))throw Error('Unsupported equipment.');
   if(h.clearance==='No Work'&&plan.turnout>2)throw Error('The veterinary plan limits turnout to two controlled hours.');
-  Object.assign(h,{feed:plan.feed,turnout:plan.turnout,autoCare:!!plan.autoCare,autoVet:!!plan.autoVet,autoFarrier:!!plan.autoFarrier,gear:{bit:plan.bit,accessory:plan.accessory,fit:100}});
+  Object.assign(h,{feed:plan.feed,turnout:plan.turnout,autoTravel:!!plan.autoTravel,autoCare:!!plan.autoCare,autoVet:!!plan.autoVet,autoFarrier:!!plan.autoFarrier,gear:{bit:plan.bit,accessory:plan.accessory,fit:100}});
   event(w,'care',`Care plan saved: ${h.feed}, ${h.turnout} hours turnout; equipment refitted.`,h.id);
 }
-export function scratchEntries(w,h,reason) {
-  for(const f of w.fixtures)for(const e of f.entries||[])if(e.horseId===h.id&&f.status==='scheduled'){
-    if(e.owner==='player'&&e.fee) { // Refund a welfare scratch exactly once.
-      w.balance=(BigInt(w.balance)+BigInt(e.fee)).toString();w.ledger.push({id:id(w,'ledger'),day:w.day,amount:e.fee,category:'Welfare scratch refund',source:f.id,balance:w.balance});
-    }
-    f.entries=f.entries.filter(x=>x!==e);event(w,'racing',`${h.name} scratched: ${reason}.`,h.id);
-  }
-}
+export { scratchEntries } from './core.js';
 export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain') {
   if(h.medicalCase||h.status==='deceased')return null;
   if(!SEVERITIES[severity])throw Error('Unknown medical severity.');
   const [min,max]=SEVERITIES[severity], duration=integer(w,min,max);
   const m={id:id(w,'medical'),horseId:h.id,day:w.day,severity,diagnosis,minDays:min,maxDays:max,recoveryDay:w.day+duration,followUp:w.day+30,status:'active',rehab:false,ceiling:severity==='Very Severe'?75:severity==='Severe'?90:100};
   w.medical.push(m);h.medicalCase=m.id;h.clearance='No Work';h.soundness=Math.min(h.soundness,severity==='Easy'?75:severity==='Medium'?65:45);h.turnout=Math.min(2,h.turnout);h.exposureDay=w.day;
+  h.irreversibleSoundnessLimit=Math.min(h.irreversibleSoundnessLimit??100,m.ceiling);h.potentialSoundnessCeiling=Math.min(h.potentialSoundnessCeiling??100,severity==='Severe'?82:severity==='Very Severe'?65:100);h.soundnessHistory.push({day:w.day,current:h.soundness,ceiling:h.potentialSoundnessCeiling,structuralLimit:h.irreversibleSoundnessLimit,reason:diagnosis});
   scratchEntries(w,h,'veterinary restriction');event(w,'medical',`${h.name}: ${diagnosis}, ${severity}. Recovery estimate ${min}–${max} days; veterinary clearance required.`,h.id);
   if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<.015){h.status='deceased';h.clearance='No Work';m.status='closed';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
   return m;
@@ -46,10 +45,11 @@ export function vet(w,horseId,action='examine') {
   const h=w.horses[horseId];if(!h||h.status==='deceased')throw Error('A live horse is required.');
   const m=w.medical.find(x=>x.id===h.medicalCase);
   if(action==='rehab'&&!m)throw Error('No medical case requires rehabilitation.');
-  if(action==='clear'&&m&&(w.day<m.recoveryDay||h.soundness<RULES.minRaceSoundness))throw Error('Recovery is incomplete; a clearance cannot bypass the medical plan.');
+  if(action==='clear'&&(h.therapy?.status==='active'||m&&(w.day<m.recoveryDay||h.soundness<RULES.minRaceSoundness)))throw Error('Recovery is incomplete; a clearance cannot bypass the medical plan.');
   charge(w,h,action==='rehab'?RULES.rehabFee:RULES.vetFee,'Veterinary service',h.id);
   if(action==='rehab'){m.rehab=true;m.therapyStart??=w.day;m.therapyEnd=Math.max(m.recoveryDay,w.day+180);h.clearance='Controlled Light Work';}
   if(action==='clear'&&m){m.status='cleared';h.medicalCase=null;h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';}
+  if(action==='clear'&&!m&&h.soundness<80)throw Error('Soundness remains below racing clearance.');
   if(action==='clear'&&!m)h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';
   const report=m?`${m.diagnosis}: ${m.severity}; ${h.soundness.toFixed(1)} soundness; ${h.clearance}. Follow-up day ${m.followUp}.`:`No active medical case. Soundness ${h.soundness.toFixed(1)}, hoof health ${h.hoofHealth.toFixed(1)}. ${h.clearance}.`;
   w.visits.push({id:id(w,'visit'),horseId:h.id,day:w.day,type:'vet',action,report});event(w,'medical',`${h.name}: ${action}. ${report}`,h.id);
@@ -58,7 +58,7 @@ export function farrier(w,horseId,shoe='Standard') {
   const h=w.horses[horseId];if(!h||h.status==='deceased')throw Error('A live horse is required.');
   if(!['Standard','Turf grip','Dirt plate','Barefoot'].includes(shoe))throw Error('Choose supported shoeing.');
   if(h.lastFarrier===w.day)throw Error('Hoof care already completed today.');
-  charge(w,h,RULES.farrierFee,'Farrier',h.id);h.hoofHealth=clamp(h.hoofHealth+15+(w.staff.find(s=>s.owner===h.owner&&s.role==='Farrier')?.skill||0)/30);h.farrierDue=w.day+RULES.farrierCycle;h.lastFarrier=w.day;h.shoes=shoe;
+  charge(w,h,RULES.farrierFee,'Farrier',h.id);h.hoofHealth=clamp(h.hoofHealth+15*(1+(traitModifiers(h,{phase:'farrier'}).values.farrier||0))+(w.staff.find(s=>s.owner===h.owner&&s.role==='Farrier')?.skill||0)/30);h.farrierDue=w.day+RULES.farrierCycle;h.lastFarrier=w.day;h.shoes=shoe;
   const report=`Hooves inspected and balanced; ${shoe}; next visit in ${RULES.farrierCycle} days. Cooperation ${Math.round((h.temperament+100-h.spookiness+h.skills.handling)/3)}/100.`;
   w.visits.push({id:id(w,'visit'),horseId:h.id,day:w.day,type:'farrier',report});event(w,'farrier',`${h.name}: ${report}`,h.id);
 }
@@ -68,34 +68,50 @@ export function retire(w,horseId,breeding=true) {
 }
 export function exposure(w,h,context) {
   if(h.medicalCase||h.status==='deceased'||h.exposureDay===w.day)return;h.exposureDay=w.day;
-  const risk=RULES.injuryRisk*w.settings.injuryFrequency*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?3:1);
+  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?3:1);
   if(random(w)<risk){const r=random(w),severity=r<.65?'Easy':r<.85?'Medium':r<.95?'More Than Medium':r<.995?'Severe':'Very Severe';injure(w,h,severity,severity==='Very Severe'?'Bone fracture':severity==='Severe'?'Tendon concern':'Soft-tissue strain');}
 }
-export function train(w,h,manual=false) {
-  if(h.status==='deceased')return false;
-  if(h.medicalCase||h.status==='retired'||age(h,w.day)<2){
-    if(h.clearance==='No Work')return false;
-    if(h.lastTrainingDay===w.day)return false;
-    if(manual){h.lastTrainingDay=w.day;w.sessions.push({id:id(w,'session'),horseId:h.id,day:w.day,skill:'handling',gain:0,activity:age(h,w.day)<2?'Youngstock groundwork':'Vet-approved light exercise'});h.fatigue=clamp(h.fatigue-2);return true;}return false;
-  }
-  if(h.soundness<80||h.fatigue>55||h.arrivalDay>w.day||h.pregnancy)return false;
-  if(w.fixtures.some(f=>f.status==='scheduled'&&f.day-w.day<=2&&f.entries?.some(e=>e.horseId===h.id)))return false;
-  if(h.lastTrainingDay===w.day||h.lastRaceDay===w.day)return false;
-  const k=SKILLS[w.day%SKILLS.length],before=h.skills[k],trainer=w.staff.find(s=>s.owner===h.owner&&s.role==='Trainer'),learning=trainer?(.85+trainer.skill/300):1;
-  const gain=RULES.trainingGain*(1-before/Math.max(1,h.potential[k]))*MOOD_FACTORS[h.mood]*(1-h.fatigue/150)*(h.soundness/100)*(h.traits.includes('Quick Learner')?1.1:1)*learning;
-  h.skills[k]=Math.min(h.potential[k],before+gain);h.fatigue=clamp(h.fatigue+RULES.trainingFatigue);h.fitness=clamp(h.fitness+.3);
-  h.lastTrainingDay=w.day;w.sessions.push({id:id(w,'session'),horseId:h.id,day:w.day,skill:k,gain:h.skills[k]-before,activity:`Balanced ${k}`,fatigue:h.fatigue});exposure(w,h,'training');return true;
+export function train(w,h,manual=false,activity=null) {
+ if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
+ const young=age(h,w.day)<2,restricted=!!h.medicalCase||h.status==='retired'||h.therapy?.status==='active'||h.clearance==='Controlled Light Work'||h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage);
+ if(h.clearance==='No Work'||restricted&&!manual&&!h.autoTrain)return false;
+ let workout=activity||h.trainingPlan||'Auto Balanced';
+ if(h.breakPlan?.stage==='Fitness Rebuild')workout='Reconditioning';
+ if(young)workout='Youngstock groundwork';if(restricted)workout='Light exercise';
+ if(!WORKOUTS[workout])throw Error('Unknown training activity.');
+ if(!young&&!restricted&&(h.soundness<80||h.fatigue>55||h.arrivalDay>w.day||h.pregnancy))return false;
+ if((scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.day-w.day<=2))return false;
+ if(workout==='Auto Balanced'){
+  const candidates=Object.keys(WORKOUTS).filter(k=>!['Auto Balanced','Rest','Light exercise','Youngstock groundwork'].includes(k));
+  const ceilings=Object.fromEntries(SKILLS.map(key=>[key,usableCeiling(h,key,w.day)])),scores=Object.fromEntries(candidates.map(name=>[name,WORKOUTS[name].primary.reduce((n,key)=>n+Math.max(0,ceilings[key]-h.skills[key])/Math.max(1,h.potential[key]),0)/Math.max(1,WORKOUTS[name].primary.length)]));
+  workout=candidates.sort((a,b)=>scores[b]-scores[a]||(h.workoutCounts[a]||0)-(h.workoutCounts[b]||0))[0];
+ }
+ const plan=WORKOUTS[workout];if(age(h,w.day)<plan.minAge)return false;
+ const modifiers=traitModifiers(h,{phase:'training'}),trainer=w.staff.find(s=>s.owner===h.owner&&s.role==='Trainer'),quality=trainer?(.85+trainer.skill/300):1,changes=[];
+ const keys=[...plan.primary,...plan.secondary];
+ for(const key of keys){const before=h.skills[key],ceiling=usableCeiling(h,key,w.day),headroom=Math.max(0,ceiling-before),scale=plan.primary.includes(key)?1:.35;
+  const gain=restricted?0:RULES.trainingGain*scale*quality*MOOD_FACTORS[h.mood]*(1-h.fatigue/150)*(h.soundness/100)*(1+(modifiers.values.learning||0))*(.8+h.skills.trainability/250+(modifiers.values.handling||0)*.5)*(headroom/Math.max(1,ceiling));
+  if(headroom>0)h.skills[key]=Math.min(ceiling,before+Math.max(0,gain));
+  const change=h.skills[key]-before;changes.push({skill:key,before,after:h.skills[key],gain:change,usableCeiling:ceiling,status:headroom<.5?'Maintenance / near current ceiling':ceiling<h.potential[key]?'Maturity or safe functional limit':'Developing'});
+  h.development.lastProgress[key]=w.day;h.workoutCounts[key]=(h.workoutCounts[key]||0)+1;
+  if(headroom<.5)h.development.plateaus[key]=(h.development.plateaus[key]||0)+1;
+ }
+ h.workoutCounts[workout]=(h.workoutCounts[workout]||0)+1;h.fatigue=clamp(h.fatigue+plan.fatigue*(young?.5:1));h.fitness=clamp(h.fitness+(restricted?.015:workout==='Rest'?-.03:.3));
+ h.lastTrainingDay=w.day;const primary=changes[0]||{skill:'handling',gain:0};
+ const session={id:id(w,'session'),horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes,fatigue:h.fatigue,appliedTraits:modifiers.applied,report:changes.length?changes.map(c=>`${SKILL_DEFINITIONS[c.skill].label} ${c.gain>0?'+':''}${c.gain.toFixed(3)} (${c.status})`).join('; '):'Appropriate light maintenance; no competitive skill gain.'};
+ if(h.owner==='player'||w.settings.debug)w.sessions.push(session);else w.sessions.push({id:session.id,horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes:changes.map(c=>[c.skill,c.before,c.after,c.usableCeiling,c.status]),fatigue:h.fatigue});if(workout==='Gate schooling')observeTrait(w,h,'gate',session.id);if(workout==='Travel practice')observeTrait(w,h,'travel',session.id);if(!restricted)exposure(w,h,'training');return true;
 }
 export function dailyCare(w,h) {
   if(h.status==='deceased'||h.owner==='archive')return;
+  recoveryDay(w,h);
   if(age(h,w.day)>12)h.fitness=clamp(h.fitness-.01*(age(h,w.day)-12));
-  h.fatigue=clamp(h.fatigue-(h.traits.includes('Quick Recovery')?9:RULES.restRecovery));
+  h.fatigue=clamp(h.fatigue-(RULES.restRecovery*(.8+h.skills.recovery/250)*(1+(traitModifiers(h,{phase:'care'}).values.recovery||0))));
   const warnings=feedWarnings(h,w.day);h.acuteStress=warnings.length>=2?'Care incompatibility':h.fatigue>70?'Excessive workload':null;
-  h.condition=clamp(h.condition+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
-  if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18);
+  h.condition=clamp(h.condition+(traitModifiers(h,{phase:'care'}).values.condition||0)*.05+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
+  if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(traitModifiers(h,{phase:'care'}).values.hoof||0)*3));
   const m=w.medical.find(x=>x.id===h.medicalCase);
   if(m&&m.status==='active'){
-    const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(m.ceiling,h.soundness+(m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1));
+    const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(h.potentialSoundnessCeiling??m.ceiling,h.soundness+(m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1)*(1+(traitModifiers(h,{phase:'vet'}).values.veterinary||0)));
     if(w.day>=m.recoveryDay&&m.ceiling<80&&h.status!=='retired'){h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;h.clearance='Light Work';m.status='chronic';h.medicalCase=null;event(w,'medical',`${h.name}: permanent racing retirement required after chronic injury. Breeding soundness must be reassessed.`,h.id);}
     if(w.day>=m.followUp){m.followUp+=30;event(w,'medical',`${h.name}: follow-up review due; current soundness ${h.soundness.toFixed(1)}.`,h.id);}
     if(w.day>=m.recoveryDay&&h.soundness>=80&&h.autoVet){try{vet(w,h.id,'clear');}catch{/* Budget shortage leaves restriction in place. */}}
@@ -103,7 +119,7 @@ export function dailyCare(w,h) {
   if(h.autoFarrier&&w.day>=h.farrierDue){try{farrier(w,h.id,h.shoes||'Standard');}catch{/* Budget shortage leaves hoof-care due. */}}
   if(w.settings.operatingCosts&&h.autoCare){try{charge(w,h,'2000','Daily care',h.id);}catch{h.acuteStress='Care payment overdue';}}
   if(w.day%30===0){
-    const negative=warnings.length+(h.fatigue>55?2:0)+(h.soundness<70?1:0);
+    const negative=warnings.length+(h.fatigue>55?2:0)+(h.soundness<70?1:0)+(traitModifiers(h,{phase:'care'}).values.turnout?1:0);
     const pool=negative>=2?['Distress','Uncomfortable','No Energy',h.preferredMood]:negative?['Uncomfortable','Overly-Active','Neutral',h.preferredMood]:['Happy','Happy','Motivated','Try-Hard','Neutral','Neutral',h.preferredMood,'Grumpy','Bad Mood'];
     h.mood=pick(w,pool);event(w,'mood',`${h.name}: monthly mood ${h.mood}${warnings.length?'. '+warnings.join(' '):'; care and recovery reviewed.'}`,h.id);
   }
@@ -112,6 +128,6 @@ export function scheduledTraining(w,h) {
   if(!h.autoTrain)return 'Off';
   if(h.lastTrainingDay===w.day)return 'Already completed today';
   if(w.day%4===0)return 'Scheduled rest day';
-  if(h.status!=='active'||h.medicalCase||h.soundness<80)return 'Paused for welfare / retirement';
+  if(h.clearance==='No Work')return 'Paused for veterinary restriction';
   return train(w,h)?'Completed today':'Paused for fatigue, travel, age or race preparation';
 }

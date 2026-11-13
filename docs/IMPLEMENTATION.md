@@ -1,20 +1,15 @@
-# v0.2 implementation report
+# V3 branch implementation report
 
-The original repository was empty. v0.1 introduced an isolated buildless browser app. This revision retains that application and the existing Site identity, upgrades schema 1 saves, and adds connected engines.
+Starting point: v0.2 standalone native-module application at commit `cce98c6`, with browser-local persistence and the twelve original destinations. No framework/database replacement or OXO modification was introduced.
 
-Changed existing files: `README.md`, `docs/IMPLEMENTATION.md`, `package.json`, `src/app.js`, `src/rules.js`, `src/storage.js`, `src/style.css`, `src/world.js`.
+The update adds genetics, development, skills/workouts, richer traits, actual historical records, field planning and reservations, rest/therapy, travel, stud-fee history, legacy/news and the searchable guide. Existing files were integrated with these services, and schema migration was expanded rather than resetting careers.
 
-Added modules: `src/core.js`, `src/career.js`, `src/care.js`, `src/racing.js`, `src/market.js`, `src/breeding.js`, `src/registry.js`, `src/upgrade.js`, `src/starters.js`, `src/ui.js`, `src/time-worker.js`.
+New modules: `genetics.js`, `development.js`, `skill-definitions.js`, `traits.js`, `race-rules.js`, `reservations.js`, `history.js`, `legacy.js`, `recovery.js`, `travel.js`, `stud.js`, `media.js`, `editing.js`, `html.js`, `v3-ui.js`, `guide.js`, `release-checklist.js`.
 
-Added validation: `test/systems.test.js`, `scripts/check-decade.js`. The existing `test/world.test.js` remains active and unchanged.
+Changed engines/UI: `core.js`, `random.js`, `rules.js`, `world.js`, `racing.js`, `care.js`, `breeding.js`, `career.js`, `market.js`, `upgrade.js`, `storage.js`, `app.js`, `ui.js`, `style.css`.
 
-User-requested behavior:
+Additional artifacts: actual schema-2 save regression fixture, V3 acceptance tests, model assumptions, visible release checklist, project-subpath static build and `.github/workflows/pages.yml`.
 
-- Journal is the first dashboard panel. Clear saves a cursor, not a destructive history deletion; archive and horse histories remain accessible.
-- Sales show short descriptions, linked sire/dam profiles, starts(wins-seconds-thirds), and lifetime prize money. Parents have their own career/profile views, with uncertainty disclosed for old unknown records.
-- Home country is editable without rewriting birth jurisdiction, historic results or official ages.
-- New careers offer five already-defined prospects, with three selected by default and optional additional candidates/customization. Selection preserves exact attributes and ancestors; adding a candidate does not alter existing cards.
-- Auto balanced works per day, with a visible daily report, exact-once session handling, rest and welfare pauses. All time controls use the same daily service.
-- The original twelve destinations all operate on canonical persisted state, including race results, care, breeding, markets, inspections and freezer. They are compact connected systems; the README explicitly lists remaining master-spec depth.
+Verification: the combined 38-test engine/rendering suite, static build, syntax checks and diff validation. Remaining verification/depth is explicit in `V3-RELEASE-CHECKLIST.md`; no full V3 completion claim or browser QA claim is made.
 
-Validation: 23 engine/rendering regressions, static build, JS syntax and diff checks; ten-year seeded simulation, compressed save and reload. No browser automation tool is available in the selected managed environment, so browser click-through testing is not claimed.
+Hosting: the requested PR branch is `codex/v3-racing-update`. GitHub Pages is public but only `main` is allowed to deploy. Configuration/branch-policy changes are denied to the connected credential with HTTP 403. The workflow therefore tests the branch and publishes after merge to `main`. No protected deployment rule is bypassed and the game PR is not automatically merged.

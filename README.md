@@ -1,66 +1,69 @@
 # First Light — Thoroughbred Stable Manager
 
-Standalone browser-based Thoroughbred ownership, racing and breeding management. Native ES modules, no npm runtime dependencies. All data stays in the player's browser; this application does not share OXO code or save keys.
+A standalone, browser-local Thoroughbred stable management game. This branch adds the connected V3 simulation/guide update and a public GitHub Pages publishing workflow. It does not modify OXO or share its save namespace.
+
+**Public website after the publishing PR is merged:** https://errorses.github.io/racing-V2/
+
+The repository already has Pages enabled with Actions and an environment that allows `main` deployments. The workflow runs tests before building/publishing. Pull requests and the update branch run verification without bypassing the protected deployment environment.
 
 ## Run
 
-Requires Node 20+ and Python 3.
+Requires Node 20+ and Python 3; no npm runtime dependencies.
 
 ```sh
-npm run dev      # http://localhost:5173
-npm test         # engine, migration and server-rendered view regressions
-npm run test:long # seeded ten-year simulation, compression and reload check
-npm run build    # static deployment files in dist/
+npm run dev       # http://localhost:5173
+npm test          # engine, genetics, migration and rendered-view regressions
+npm run build     # static dist/ output; relative paths support GitHub Pages project URLs
+npm run test:long # extended simulation harness; not part of ordinary CI
 ```
 
-## Start and play
+## Playing
 
-New Career presents **five ready prospects**, with three selected by default. Choose any three, another number, or add more. Names, IDs, skills, coat, personality and parents are fixed before selection and copied into the career without rerolling. Optional customization is under each horse's card. Explicit Regenerate uses the selected country/seed to prepare another catalog. Changing home country alone keeps the chosen horses' birth identities. The stable starts in the chosen home country with selected horses located there.
+Start with five fully defined prospects and select any three or another count. IDs, names, genetics, skills and parent identities are fixed before selection; adding a prospect does not change existing candidates. Optional customization remains available. Choose your home country and economy independently from creative genetics and registration rules.
 
-Existing careers upgrade automatically. Use Settings to change home jurisdiction, edit exact funds, choose official or fictional alternative registration, configure automation and export backups. Starting another career exports the current one before replacing it. There is no real-time waiting or currency purchase.
+Assign Auto Balanced and use Next Day to process daily training, care, nominations, travel and results. Rest days and veterinary restrictions remain enforced. The Training screen reports actual gains and plateau/headroom. Open the global **Guide** or a field's **?** on any screen, including setup; the separate drawer preserves the game form beneath it.
 
-## Connected systems in v0.2
+The stable journal is the first dashboard panel. Clear only hides previous feed entries; horse histories, race results and the archive persist. Sales and all parent/stud profiles show recorded `starts(wins-seconds-thirds)` and lifetime earnings. Historic unknown records are explicitly distinct from unstarted horses.
 
-- **Dashboard:** stable journal first, clear feed without deleting permanent histories, archive, stable totals.
-- **Horses:** searchable/paginated roster, descriptions, traits, current/potential, chronological/official age, `starts(wins-seconds-thirds)`, lifetime winnings, linked parent/ancestor careers, siblings, offspring, COI, medical and ownership history.
-- **Market:** private purchases, auctions, reserve/bidding/finite NPC budgets, listings, disclosed medical history, pre-purchase exams, ownership transfers and actual sale records.
-- **Races:** original international calendars, maiden/allowance/open/Grade or Group fixtures, eligibility, jockey bookings, tactics, travel, multiple player entries, shared-clock simulation, splits, finish interpolation, results, payouts, leaderboards and read-only highlight playback.
-- **Vet / Farrier / Care:** five medical tiers, gradual soundness recovery, rehabilitation, clearance, welfare scratches, chronic retirement, rare opt-in fatality, hoof cycles, shoes, feed/turnout compatibility, monthly persisted moods and freely available gear.
-- **Training:** persistent per-horse balanced programs processed on **every Next Day** as well as longer skips. Today's screen shows completed work, skill gain, fatigue, scheduled rest and pause reasons. A separate action runs today's eligible programs, idempotently. Six skill rotation, diminishing returns, potential caps, mood and staff effects; manual sessions and appropriate youngstock/light work.
-- **Stud / Breeding:** retired breeding animals, maturity and medical gates, natural service, conception, gestation, foaling, inherited pigment/gray/creative tobiano and polygenic aptitude, parent/offspring links and post-foaling rest.
-- **Registries:** official vs alternative eligibility, one lifetime voluntary four-score inspection, boundary-safe Fail/Pass/Golden/Elite titles and appraisal effects.
-- **Breeders:** production and actual progeny results, available stock; NPC training, racing, budgets, sales, retirement, breeding and new cohorts during skips.
-- **Freezer:** collection, doses, viability, transfer/shipment and disposal; frozen AI consumes a dose only in the fictional alternative registry. It cannot register official racing TBs.
-- **Settings / Calendar:** home country, exact integer-cent finances, staff, operating costs, separate auto-race toggle (default off), dark/light themes, calendar and backups.
+## V3 systems
 
-## Saves and reproducibility
+- Twenty-six canonical athletic, racecraft, surface, learning and recovery skill definitions and mapped workouts.
+- Separate inherited ceilings, maturity availability, lasting functional limits, current preparation and scouting estimates. Class projection is not an official-entry lock.
+- Diploid supported coat loci, dosage/masking, unknown/inferred legacy confidence, linked quantitative haplotypes, bounded performance heredity and independent Monte Carlo mating previews.
+- More than 100 contextual trait definitions, persistent instances and dated learned observations.
+- Real NPC reservations, published race conditions, country Group/Grade labels, field-health diagnostics, recurring series and reserve cohorts.
+- Shared-clock race inputs, acceleration, energy, turning, traffic, tactical/weight effects and causal highlights; results and payouts commit once.
+- Canonical historical races and identifiable rivals, NPC stud careers and fee history, deep ancestor links, evidence-based legacy awards and track-record archives.
+- Voluntary breaks, review/reconditioning, current/recoverable/irreversible soundness, gradual long-term therapy and veterinary clearance.
+- Actual departure, arrival and acclimatization bookings, international campaigns and late-arrival checks.
+- Grounded fictional news, read/bookmark/follow controls and monthly catch-up digests.
+- Global searchable guide covering the original twelve tabs, skills, workouts, genetics, traits, classes, recovery, travel and model assumptions.
+- Existing markets, auctions, breeding, lifetime inspections and creative freezer remain connected to persistent horse IDs.
 
-Schema 1 migrates additively to schema 2, preserving existing IDs, records and funds. IndexedDB replaces small localStorage snapshots; the original key is read for migration and kept intact. Current and previous snapshots are gzip-compressed when supported. Exports remain checksummed JSON. Imports validate supported schemas, relationships, careers, fixtures, medical references, enums and unsupported markup before replacing the current career. Unknown versions and corrupt data never silently reset a career.
+## Saves
 
-All random world mutations use stored seeded RNG. Views and replays do not draw random numbers. Simulation entity IDs do not depend on the number of journal messages or time-advance clicks. Long time advances run in a Web Worker; saving/compression follows before the UI accepts another mutation.
+Schema 1/2 careers migrate to schema 3 without resetting IDs, old coats, existing caps, pedigrees, results, money or prior awards. Missing genetic information is labeled inferred or unknown, not invented as a verified negative. Current/previous autosaves use compressed IndexedDB; portable exports are checksummed JSON.
+
+**Saves belong to the browser and website origin.** To move a career from the private preview to GitHub Pages, export it there and use **Import existing career** at the new site's setup screen. Visitors do not see one another's browser-local careers.
 
 ## Architecture
 
-| Module | Responsibility |
+| Modules | Responsibility |
 | --- | --- |
-| `src/rules.js` | Rules, countries, exact money, calendar and age |
-| `src/random.js`, `src/core.js` | Stored RNG, names, identities, events, funds and ownership helpers |
-| `src/starters.js` | Fixed ready-prospect catalog with persistent ancestry |
-| `src/world.js`, `src/time-worker.js` | World initialization, daily orchestration, staff, NPC lifecycle and worker |
-| `src/career.js` | Canonical career totals, descriptions, relatives and relationship-matrix COI |
-| `src/care.js` | Care, mood, medical, farrier, training, restrictions and exposure |
-| `src/racing.js` | Fixtures, entries, jockeys, shared-clock races, immutable results and payouts |
-| `src/market.js` | Appraisals, private sales, auctions and settlement |
-| `src/breeding.js`, `src/registry.js` | Reproduction, inheritance, freezer and inspection |
-| `src/upgrade.js`, `src/storage.js` | Migration, validation, compression and browser persistence |
-| `src/app.js`, `src/ui.js`, `src/style.css` | Action dispatch, read-only views and responsive interface |
+| `rules`, `skill-definitions`, `race-rules` | Versioned rules, country/class conditions, skills and workouts |
+| `core`, `random`, `starters` | Identity, exact funds, events, deterministic RNG and ready prospects |
+| `genetics`, `development`, `traits`, `editing` | Diploid/quantitative inheritance, caps, maturity, scouting, contextual traits and explicit creative edits |
+| `world`, `reservations`, `time-worker` | Daily orchestration, indexed bookings, NPC lifecycle and background skips |
+| `racing`, `history`, `career`, `legacy` | Fixtures/results, historical archive, canonical career selectors and evidence-based honors |
+| `care`, `recovery`, `travel` | Training, care/medical/farrier, breaks/therapy and actual movement |
+| `breeding`, `stud`, `registry`, `market`, `media` | Reproduction, stud books/fees, lifetime inspection, transactions and grounded news |
+| `upgrade`, `storage` | Additive migrations, write validation, backups, compression and imports |
+| `app`, `html`, `ui`, `v3-ui`, `guide` | Actions, read-only views, responsive interface and offline searchable help |
 
-## Validation and current limits
+## Verification and honest limits
 
-23 tests cover starter identity/selection, daily training, money, country changes, journal clearing, race idempotency, multiple entries, medical recovery, auctions, inheritance, COI, inspection boundaries, schema migration, compression and rendering all required routes. Includes 10,000 chestnut pairings and 1,000 seeded comparative races with both expected strength and upsets.
+The 38-test suite includes the existing gameplay regressions plus 100,000 seeded diploid transmissions, expression/masking and compatibility checks, 500-workout hard caps, daily training, all-country one-horse racing, overseas arrival, nine-month therapy, full historical stud records, guide definitions/search and an actual schema-2 save fixture. Build, JavaScript syntax and diff checks are also run before the PR.
 
-A seeded ten-year regression completed at day 3600 with 1,078 horses, 3,957 committed races, 179 foals, eight sales and 438,962 training sessions; the 170.7 MB JSON compressed to 21.9 MB and reloaded with relationships/results preserved. The run took 55.2 seconds on this executor, including serialization/compression/reload. This is a measured desktop-scale result, not a guarantee for every browser or a 100-year benchmark.
+This is not a claim that every numbered V1–V3 acceptance detail is finished. The visible **Release Checklist** and [V3 release checklist](docs/V3-RELEASE-CHECKLIST.md) identify the remaining full stress matrix, real-browser QA, decade recertification, exhaustive calibration and advanced incident/negotiation/press depth. The selected managed environment lacks its required browser-control tool; HTML rendering tests do not substitute for browser interaction tests.
 
-**Browser interaction QA remains unverified:** this managed environment lacks the required `cua_repl.js` tool. Engine and HTML rendering tests do not substitute for click-through browser testing.
-
-This is a connected implementation across all twelve requested destinations, **not a claim that every detail of the master specification is finished**. Genetics currently models Extension, Agouti, gray and creative tobiano, not the complete KIT/dilution/pattern suite. Jockey skills, class rules, equipment variants, global analytics, negotiation, NPC finances and medical knowledge use compact game abstractions. Individual notifications/read states, exhaustive tack legality, richer monthly summaries and full world-history pagination remain further work. Large histories are preserved and compressed rather than deleted; very long careers may still require additional storage/performance work. Legacy unknown ancestor racing histories stay unrecorded; invented historical wins are never added.
+Read [genetics and racing assumptions](docs/genetics-and-racing-model.md) for evidence versus fictional approximations. V4/V5 PDFs supplied later are reference attachments; their contents were not silently treated as authorization for another implementation scope.

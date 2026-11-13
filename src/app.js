@@ -1,6 +1,13 @@
+import { mountGuide } from './guide.js';
+import { editGenetics, dnaPanel } from './editing.js';
+import { LOCI } from './genetics.js';
+import { SKILL_IDS } from './skill-definitions.js';
+import { putOnBreak, reviewBreak, startTherapy } from './recovery.js';
+import { cancelTravel } from './travel.js';
+import { markNews } from './media.js';
 import { prepareStarters, prospectCards } from './starters.js';
 import { COUNTRIES } from './rules.js';
-import { createWorld, advanceWorld, buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss } from './world.js';
+import { createWorld, advanceWorld, buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss, setFieldDensity } from './world.js';
 import { ownedHorse } from './core.js';
 import { setCare, vet, farrier, retire, scheduledTraining } from './care.js';
 import { enterRace, scratchRace, travel } from './racing.js';
@@ -10,10 +17,10 @@ import { inspect } from './registry.js';
 import { saveCareer, loadCareer, backupCareer, encode, decode } from './storage.js';
 import { shell, setupView } from './ui.js';
 
-const app=document.querySelector('#app');
+const app=document.querySelector('#app');mountGuide();
 let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
-const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null};
+const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All'};
 function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,state,notice,busy);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 async function update(action,message='Saved to this browser.') {
@@ -28,7 +35,7 @@ async function advance(days){
     Object.assign(next,result);
   },`Advanced ${days} days and saved all scheduled events.`);
 }
-function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics')};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
+function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
 function exportCareer(){const url=URL.createObjectURL(new Blob([encode(world)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function openHorse(id){if(state.selected)state.profileStack.push({id:state.selected,tab:state.profileTab});state.selected=id;state.profileTab='Overview';stopReplay();render();}
 app.addEventListener('click',async e=>{
@@ -57,7 +64,7 @@ app.addEventListener('click',async e=>{
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
   const actions={
     'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
-    buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
+    'follow-horse':n=>{if(n.followedHorses.includes(id))n.followedHorses=n.followedHorses.filter(x=>x!==id);else n.followedHorses.push(id);},buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
     auto:n=>{const h=ownedHorse(n,id);if(h.status==='deceased')throw Error('Cannot train a deceased horse.');h.autoTrain=!h.autoTrain;},
     'today-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>scheduledTraining(n,h)),
     'all-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player'&&h.status==='active').forEach(h=>h.autoTrain=true),
@@ -73,6 +80,7 @@ app.addEventListener('click',async e=>{
     withdraw:n=>withdrawListing(n,id),
     scratch:n=>scratchRace(n,id,b.dataset.horseId),
     hire:n=>hire(n,id),dismiss:n=>dismiss(n,id),
+    'review-break':n=>reviewBreak(n,id),dna:n=>dnaPanel(n,id),'cancel-travel':n=>cancelTravel(n,id),'read-news':n=>markNews(n,id,'read'),'bookmark-news':n=>markNews(n,id,'bookmark'),
     restore:async n=>Object.assign(n,await backupCareer()),
   };
   if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Saved to this browser.');
@@ -86,14 +94,17 @@ app.addEventListener('submit',async e=>{
   if(!world)return;
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
   const actions={
+    workout:n=>{const h=ownedHorse(n,id);h.trainingPlan=f.get('activity');if(!train(n,h,true,f.get('activity')))throw Error('This workout is not currently permitted.');},
+    break:n=>putOnBreak(n,id,Number(f.get('days')),f.get('reason')),therapy:n=>startTherapy(n,id,Number(f.get('months'))),
+    creative:n=>editGenetics(n,id,{loci:Object.fromEntries(Object.keys(LOCI).map(k=>[k,[f.get(`${k}-0`),f.get(`${k}-1`)]])),caps:Object.fromEntries(SKILL_IDS.map(k=>[k,Number(f.get(`cap-${k}`))]))},f.has('acknowledge')),
     rename:n=>rename(n,id,f.get('name')),
     country:n=>{changeCountry(n,f.get('country'));state.raceCountry=f.get('country');},
     settings:n=>{
       if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
       const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
-      n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','debug'])n.settings[key]=f.has(key);
+      if(f.get('fieldDensity')&&f.get('fieldDensity')!==n.settings.fieldDensity)setFieldDensity(n,f.get('fieldDensity'));n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','creativeMode','revealPotential','debug'])n.settings[key]=f.has(key);
     },
-    care:n=>setCare(n,id,{feed:f.get('feed'),turnout:Number(f.get('turnout')),bit:f.get('bit'),accessory:f.get('accessory'),autoCare:f.has('autoCare'),autoVet:f.has('autoVet'),autoFarrier:f.has('autoFarrier')}),
+    care:n=>setCare(n,id,{feed:f.get('feed'),turnout:Number(f.get('turnout')),bit:f.get('bit'),accessory:f.get('accessory'),autoTravel:f.has('autoTravel'),autoCare:f.has('autoCare'),autoVet:f.has('autoVet'),autoFarrier:f.has('autoFarrier')}),
     travel:n=>travel(n,id,f.get('country')),
     entry:n=>enterRace(n,id,f.get('horseId'),f.get('jockeyId'),f.get('tactic')),
     farrier:n=>{ownedHorse(n,id);farrier(n,id,f.get('shoe'));},
