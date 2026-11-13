@@ -1,26 +1,116 @@
-import {COUNTRIES,SKILLS,age,dateLabel,money,RULES} from './rules.js';
-import {createWorld,advanceWorld,buy,setBalance,rename,phenotype,train} from './world.js';
-import {load,save,encode,decode} from './storage.js';
-let draft={};
-const app=document.querySelector('#app');let w=null,tab='Dashboard',selected=null,query='',page=0,notice='',starters=[{potential:90,ability:35,sex:'filly'},{potential:75,ability:30,sex:'colt'}];
-try{w=load();}catch(e){notice=e.message;}
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const button=(label,action,extra='')=>`<button data-action="${action}" ${extra}>${label}</button>`;
-const field=(label,input)=>`<label>${label}${input}</label>`;
-function select(name,values,value){return `<select name="${name}">${values.map(v=>`<option ${v===value?'selected':''}>${esc(v)}</option>`).join('')}</select>`;}
-function owned(){return Object.values(w.horses).filter(h=>h.owner==='player');}
-function update(fn){try{const next=structuredClone(w);fn(next);save(next);w=next;notice='Saved to this browser.';}catch(e){notice=e.message;}render();}
-function setup(){app.innerHTML=`<main class="setup"><div class="eyebrow">FIRST LIGHT / THOROUGHBRED MANAGEMENT</div><h1>Your stable.<br>Your next chapter.</h1><p class="intro">Build a racing operation with a world of possibility. Every career starts with an unstarted two-year-old.</p><p role="status">${esc(notice)}</p><form id="setup"><section class="panel"><h2>01 · Your operation</h2><div class="fields">${field('Stable name','<input name="stable" value="First Light Racing" required>')}${field('Owner name','<input name="owner" value="Owner" required>')}${field('Home country',select('country',Object.keys(COUNTRIES),'USA'))}${field('World seed','<input name="seed" value="first-light" required>')}${field('Starting balance in USD','<input name="balance" value="1000000.00" inputmode="decimal" required>')}${field('Creative economy','<span><input name="unlimited" type="checkbox" checked> Unlimited funds</span>')}</div></section><section class="panel"><div class="section-head"><h2>02 · Your founding horses</h2>${button('+ Add horse','add','type="button"')}</div><p>All starters are Thoroughbreds, racing age 2, sound and unstarted. Potential is an aptitude ceiling; current ability is separate.</p><div class="starter-grid">${starters.map((s,i)=>`<div class="starter"><h3>Prospect ${i+1}</h3>${field('Registered name (blank generates one)',`<input name="name-${i}" maxlength="18" value="${esc(s.name||'')}">`)}${field('Sex',select(`sex-${i}`,['filly','colt','gelding'],s.sex))}<div class="fields">${field('Potential · 0–100',`<input name="potential-${i}" type="number" min="0" max="100" value="${s.potential}" required>`)}${field('Current ability · 0–100',`<input name="ability-${i}" type="number" min="0" max="100" value="${s.ability}" required>`)}</div>${button('Remove','remove',`type="button" data-index="${i}" ${starters.length===1?'disabled':''}`)}</div>`).join('')}</div></section><p class="muted">Foundation stage: world, identity, calendar, care plans, training, private sales and saves. Full racing and breeding follow in later stages.</p><button class="primary" type="submit">Start your career →</button></form></main>`;for(const [key,value] of Object.entries(draft)){const el=document.querySelector('#setup').elements.namedItem(key);if(el&&el.type!=='checkbox')el.value=value;}if('stable' in draft)document.querySelector('[name=unlimited]').checked=!!draft.unlimited;}
-function collectStarters(){const f=new FormData(document.querySelector('#setup'));draft=Object.fromEntries(f);starters=starters.map((s,i)=>({name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`))}));return f;}
-function horseTable(horses,market=false){const filtered=horses.filter(h=>`${h.name} ${h.sex} ${h.country} ${phenotype(h)}`.toLowerCase().includes(query.toLowerCase()));const shown=filtered.slice(page*15,page*15+15);return `<div class="section-head"><input id="search" aria-label="Search horses" placeholder="Search names, country, sex or coat…" value="${esc(query)}"><span>${filtered.length} horses</span></div><div class="table-wrap"><table><thead><tr><th>Horse / identity</th><th>Age / sex</th><th>Ability / potential</th><th>Soundness</th><th>${market?'Asking price':'Program'}</th><th></th></tr></thead><tbody>${shown.map(h=>`<tr><td><a href="#" data-horse="${h.id}">${esc(h.name)}</a><small>${esc(phenotype(h))} · ${h.country}</small></td><td>${age(h,w.day)} · ${h.sex}</td><td>${h.skills.speed.toFixed(1)} / ${h.potential.speed}<div class="bar"><i style="width:${h.skills.speed}%"></i></div></td><td><span class="badge">${h.soundness} / 100</span></td><td>${market?money(w.listings.find(l=>l.horseId===h.id&&!l.sold).price):h.autoTrain?'Balanced auto':'Manual / rest'}</td><td>${market?button('Buy','buy',`data-id="${w.listings.find(l=>l.horseId===h.id&&!l.sold).id}"`):button('Open profile','profile',`data-id="${h.id}"`)}</td></tr>`).join('')||'<tr><td colspan="6">No matching horses.</td></tr>'}</tbody></table></div><div class="pager">${button('← Previous','previous',page===0?'disabled':'')}<span>Page ${page+1}</span>${button('Next →','next',(page+1)*15>=filtered.length?'disabled':'')}</div>`;}
-function profile(){const h=w.horses[selected];return `<div class="section-head">${button('← Back to roster','back')}<span>${h.id} · Registered Thoroughbred</span></div><h1>${esc(h.name)}</h1><p>${age(h,w.day)}yo ${h.sex} · ${esc(phenotype(h))} · Born ${h.country} · Owner: ${esc(w.owners[h.owner].name)}</p><div class="cards"><article><span>Soundness</span><strong>${h.soundness}</strong></article><article><span>Mood</span><strong>${h.mood}</strong></article><article><span>Fitness / fatigue</span><strong>${h.fitness.toFixed(0)} / ${h.fatigue.toFixed(0)}</strong></article><article><span>Career starts</span><strong>${h.starts.length}</strong></article></div><div class="columns"><section class="panel"><h2>Ability & inherited potential</h2>${SKILLS.map(k=>`<div class="skill"><span>${k}</span><span>${h.skills[k].toFixed(2)} / ${h.potential[k]}</span><div class="bar"><i style="width:${h.skills[k]}%"></i></div></div>`).join('')}<p>Potential is a ceiling, not a race result. Current ability improves gradually with training.</p><p>Temperament ${h.temperament}: 100 = steady<br>Spookiness ${h.spookiness}: 100 = reactive</p>${h.owner==='player'?`${button(h.autoTrain?'Stop balanced program':'Auto Train — Balanced','auto',`data-id="${h.id}"`)} ${button('Train one session','train',`data-id="${h.id}"`)}`:''}</section><section class="panel"><h2>Identity & pedigree</h2><p>Base alleles: Extension ${h.coat.extension} · Agouti ${h.coat.agouti}<br>Gray allele present: ${h.coat.gray?'Yes':'No'}<br>Face: ${h.coat.face}<br>LF / RF / LH / RH: ${h.coat.legs.join(' / ')}</p><h3>Conformation · 1–10</h3><p>${Object.entries(h.conformation).map(([k,v])=>`${k}: ${v}`).join(' · ')}</p><h3>Parents</h3>${[h.sire,h.dam].map(p=>p?`<p><a href="#" data-horse="${p}">${esc(w.horses[p].name)}</a></p>`:'<p>Unknown founder ancestry</p>').join('')}<p class="muted">Historical ancestors: no detailed historical results recorded.</p>${h.owner==='player'?`<form id="rename">${field('Registered name',`<input name="name" value="${esc(h.name)}" maxlength="18" required>`)}<button>Save name</button></form>`:''}</section></div><section class="panel"><h2>Permanent history</h2>${w.events.filter(e=>e.horseId===h.id).toReversed().map(e=>`<p><small>${dateLabel(e.day)}</small>${esc(e.text)}</p>`).join('')||'<p>No detailed historical events recorded.</p>'}<h3>Training sessions</h3>${w.sessions.filter(s=>s.horseId===h.id).slice(-30).toReversed().map(s=>`<p>${dateLabel(s.day)} · ${s.skill}: +${s.gain.toFixed(3)}</p>`).join('')||'<p>No sessions recorded.</p>'}</section>`;}
-function content(){if(selected)return profile();if(tab==='Horses')return `<h1>Your horses</h1><p>Persistent identities. Individual prospects.</p><section class="panel">${horseTable(owned())}</section>`;if(tab==='Market')return `<h1>Private bloodstock sales</h1><p>Fictional asking prices in USD. Each purchase transfers the existing horse and preserves its history.</p><section class="panel">${horseTable(w.listings.filter(l=>!l.sold).map(l=>w.horses[l.horseId]),true)}</section>`;
-if(tab==='Training')return `<h1>Training programs</h1><p>Balanced programs rotate six skills with rest every fourth day. Work pauses above 55 fatigue or below 80 soundness. Auto race entry is off.</p><section class="panel">${button('Assign balanced to all owned horses','all-auto')}${horseTable(owned())}</section>`;
-if(tab==='Calendar')return `<h1>World calendar</h1><p>30-day months · 360-day years. Fictional fixtures are reference schedules; race entry and resolution are not implemented in this stage.</p><section class="panel"><table><tr><th>Date</th><th>Fixture</th><th>Track</th><th>Country</th></tr>${w.fixtures.filter(f=>f.day>=w.day).slice(0,80).map(f=>`<tr><td>${dateLabel(f.day)}</td><td>${f.title}</td><td>${f.track}</td><td>${f.country}</td></tr>`).join('')}</table></section>`;
-if(tab==='Settings')return `<h1>Career settings</h1><section class="panel"><form id="settings">${field('Unlimited funds',`<input name="unlimited" type="checkbox" ${w.unlimited?'checked':''}>`)}${field('Current balance (USD)',`<input name="balance" value="${(BigInt(w.balance)/100n).toString()}.${String((BigInt(w.balance)<0n?-BigInt(w.balance):BigInt(w.balance))%100n).padStart(2,'0')}" required>`)}<button class="primary">Save economy settings</button></form><p>Unlimited funds keeps a theoretical ledger; purchases may take it below zero. To set a custom balance, enter a non-negative amount.</p><h2>Career backups</h2>${button('Export career','export')} <label class="upload">Import career<input id="import" type="file" accept=".json,application/json"></label>${button('Restore previous autosave','restore')}<p>Autosaves use an isolated racing namespace. Imports validate checksum, schema and ancestry before replacing your career.</p></section><section class="panel"><h2>Transaction ledger</h2>${w.ledger.toReversed().map(l=>`<p>${dateLabel(l.day)} · ${l.category} · ${money(l.amount)}</p>`).join('')||'<p>No transactions yet.</p>'}</section>`;
-return `<div class="eyebrow">THE OWNER'S DESK</div><h1>A new day at ${esc(w.stableName)}.</h1><p class="intro">Develop your prospects. Build a lasting bloodline.</p><div class="cards"><article><span>Horses in your care</span><strong>${owned().length}</strong><small>Thoroughbreds</small></article><article><span>Two-year-old prospects</span><strong>${owned().filter(h=>age(h,w.day)===2).length}</strong><small>At the start of their career</small></article><article><span>Balanced programs</span><strong>${owned().filter(h=>h.autoTrain).length}</strong><small>${w.sessions.length} recorded sessions</small></article><article><span>World population</span><strong>${Object.keys(w.horses).length}</strong><small>Including persistent ancestors</small></article></div><div class="columns"><section class="panel"><div class="section-head"><h2>The stable</h2>${button('View all horses →','roster')}</div>${owned().slice(0,5).map(h=>`<div class="horse-row"><div><a href="#" data-horse="${h.id}">${esc(h.name)}</a><small>${age(h,w.day)}yo ${h.sex} · ${esc(phenotype(h))}</small></div><span class="badge">${h.mood}</span></div>`).join('')}</section><section class="panel"><h2>Stable journal</h2>${w.events.slice(-6).toReversed().map(e=>`<p><small>${dateLabel(e.day)}</small>${esc(e.text)}</p>`).join('')}</section></div><section class="stage-note"><strong>Foundation release</strong><p>World setup, persistent identities, ancestry, private sales, time, balanced training and backups are playable. Full medical, racing, breeding, registry and freezer engines remain in the implementation roadmap.</p></section>`;}
-function render(){if(!w)return setup();app.innerHTML=`<aside><a class="brand" href="#" data-nav="Dashboard"><span>FL</span> FIRST LIGHT<small>THOROUGHBRED STABLE MANAGER</small></a><div class="nav-label">YOUR OPERATION</div><nav>${['Dashboard','Horses','Market','Training','Calendar','Settings'].map(t=>`<button data-nav="${t}" class="${tab===t?'active':''}">${t}</button>`).join('')}</nav><div class="aside-bottom"><span class="badge">FOUNDATION · v0.1</span><p>${esc(w.ownerName)}<small>${esc(w.country)} · ${esc(w.stableName)}</small></p></div></aside><div class="shell"><header><div>${dateLabel(w.day)}<small>${w.country} / ${w.unlimited?'Creative economy':'Custom economy'}</small></div><div class="wallet">${w.unlimited?'∞ Unlimited funds':money(w.balance)}<small>Theoretical balance ${money(w.balance)}</small></div></header><div class="timebar">${button('Next day','day')}${button('Next month','month')}<form id="skip"><input aria-label="Skip amount" name="amount" type="number" min="1" max="100" value="1">${select('unit',['Days','Months','Years'],'Months')}<button>Skip time →</button></form><span id="notice" role="status">${esc(notice)}</span></div><main>${content()}</main></div>`;}
-app.addEventListener('click',e=>{const link=e.target.closest('[data-horse]');if(link){e.preventDefault();selected=link.dataset.horse;render();return;}const nav=e.target.closest('[data-nav]');if(nav){e.preventDefault();tab=nav.dataset.nav;selected=null;query='';page=0;render();return;}const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,i=b.dataset.id;if(!w){if(a==='add'||a==='remove'){collectStarters();if(a==='add')starters.push({potential:80,ability:30,sex:'filly'});else starters.splice(Number(b.dataset.index),1);setup();}return;}if(a==='profile'){selected=i;render();}if(a==='back'){selected=null;tab='Horses';render();}if(a==='roster'){tab='Horses';render();}if(a==='previous'||a==='next'){page+=a==='next'?1:-1;render();}if(a==='day'||a==='month')update(n=>advanceWorld(n,a==='day'?1:30));if(a==='buy')update(n=>buy(n,i));if(a==='auto')update(n=>n.horses[i].autoTrain=!n.horses[i].autoTrain);if(a==='all-auto')update(n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>h.autoTrain=true));if(a==='train')update(n=>{if(n.sessions.some(s=>s.horseId===i&&s.day===n.day))throw Error('This horse has already trained today.');if(!train(n,n.horses[i]))throw Error('Work requires active status, age 2+, soundness 80+, and fatigue 55 or less.');});if(a==='export'){const url=URL.createObjectURL(new Blob([encode(w)],{type:'application/json'}));const x=document.createElement('a');x.href=url;x.download='first-light-career.json';x.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}if(a==='restore')update(n=>{const backup=localStorage.getItem(`${RULES.saveKey}.backup`);if(!backup)throw Error('No previous autosave available.');Object.assign(n,decode(backup));});});
-app.addEventListener('submit',e=>{e.preventDefault();const f=new FormData(e.target);if(e.target.id==='setup'){collectStarters();try{w=createWorld({country:f.get('country'),stable:f.get('stable'),owner:f.get('owner'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),starters});save(w);notice='Career created.';}catch(err){w=null;notice=err.message;}render();}if(e.target.id==='skip')update(n=>advanceWorld(n,Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')])));if(e.target.id==='settings')update(n=>{n.unlimited=f.has('unlimited');setBalance(n,f.get('balance'));});if(e.target.id==='rename')update(n=>rename(n,selected,f.get('name')));});
-app.addEventListener('input',e=>{if(e.target.id==='search'){query=e.target.value;page=0;const pos=e.target.selectionStart;render();const input=document.querySelector('#search');input.focus();input.setSelectionRange(pos,pos);}});
-app.addEventListener('change',async e=>{if(e.target.id==='import'){try{const candidate=decode(await e.target.files[0].text());save(candidate);w=candidate;selected=null;notice='Career imported.';}catch(err){notice=err.message;}render();}});render();
+import { prepareStarters, prospectCards } from './starters.js';
+import { COUNTRIES } from './rules.js';
+import { createWorld, advanceWorld, buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss } from './world.js';
+import { ownedHorse } from './core.js';
+import { setCare, vet, farrier, retire, scheduledTraining } from './care.js';
+import { enterRace, scratchRace, travel } from './racing.js';
+import { listHorse, bid, withdrawListing, prePurchase } from './market.js';
+import { cover, collect, dispose, transferBatch } from './breeding.js';
+import { inspect } from './registry.js';
+import { saveCareer, loadCareer, backupCareer, encode, decode } from './storage.js';
+import { shell, setupView } from './ui.js';
+
+const app=document.querySelector('#app');
+let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
+let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
+const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null};
+function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,state,notice,busy);}
+function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
+async function update(action,message='Saved to this browser.') {
+  if(busy)return;busy=true;stopReplay();render();
+  try {const next=structuredClone(world);await action(next);await saveCareer(next);world=next;notice=message;}
+  catch(error){notice=error.message;}finally{busy=false;render();}
+}
+async function advance(days){
+  await update(async next=>{
+    if(days<=1){advanceWorld(next,days);return;}
+    const result=await new Promise((resolve,reject)=>{const worker=new Worker(new URL('./time-worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{worker.terminate();data.error?reject(Error(data.error)):resolve(data.world);};worker.onerror=error=>{worker.terminate();reject(Error(error.message||'World advancement failed.'));};worker.postMessage({world:next,days});});
+    Object.assign(next,result);
+  },`Advanced ${days} days and saved all scheduled events.`);
+}
+function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics')};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
+function exportCareer(){const url=URL.createObjectURL(new Blob([encode(world)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function openHorse(id){if(state.selected)state.profileStack.push({id:state.selected,tab:state.profileTab});state.selected=id;state.profileTab='Overview';stopReplay();render();}
+app.addEventListener('click',async e=>{
+  if(busy)return;
+  const link=e.target.closest('[data-horse]');if(link){e.preventDefault();openHorse(link.dataset.horse);return;}
+  const nav=e.target.closest('[data-nav]');if(nav){e.preventDefault();stopReplay();state.tab=nav.dataset.nav;state.selected=null;state.resultId=null;state.profileStack=[];state.query='';state.page=0;render();return;}
+  const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;
+  if(a==='add'||a==='remove'||a==='regenerate-starters'){collectSetup();if(a==='regenerate-starters'){catalog=prepareStarters({country:draft.country,worldSeed:draft.seed,count:5});starters=prospectCards(catalog);notice='Five new ready prospects generated. Select the horses you want.';}else if(a==='add'){const expanded=prepareStarters({...catalog,count:catalog.count+1});const card=prospectCards(expanded).at(-1);catalog=expanded;starters.push({...card,selected:true});}else starters.splice(Number(b.dataset.index),1);render();return;}
+  if(a==='cancel-setup'){settingUp=false;render();return;}
+  if(!world&&a==='restore'){try{const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
+  if(!world)return;
+  if(a==='profile'){openHorse(id);return;}
+  if(a==='back'){const previous=state.profileStack.pop();if(previous){state.selected=previous.id;state.profileTab=previous.tab;}else state.selected=null;render();return;}
+  if(a==='profile-tab'){state.profileTab=id;render();return;}
+  if(a==='roster'){state.tab='Horses';state.selected=null;render();return;}
+  if(a==='previous'||a==='next'){state.page+=a==='next'?1:-1;render();return;}
+  if(a==='result'){state.resultId=id;state.selected=null;state.replayFrame=0;stopReplay();render();return;}
+  if(a==='close-result'){stopReplay();state.resultId=null;render();return;}
+  if(a==='replay-play'){if(state.replayPlaying)stopReplay();else {state.replayPlaying=true;replayTimer=setInterval(()=>{const r=world.results[state.resultId];if(!r){stopReplay();return;}if(state.replayFrame>=r.frames.length-1){stopReplay();render();return;}state.replayFrame++;render();},650);}render();return;}
+  if(a==='replay-reset'){stopReplay();state.replayFrame=0;render();return;}
+  if(a==='replay-next'){stopReplay();state.replayFrame=Math.min(state.replayFrame+1,world.results[state.resultId].frames.length-1);render();return;}
+  if(a==='journal-archive'){state.journalArchive=!state.journalArchive;render();return;}
+  if(a==='breeder-stock'){state.breeder=id;state.query='';state.page=0;render();return;}
+  if(a==='export'){exportCareer();return;}
+  if(a==='new-career'){exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
+  if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
+  const actions={
+    'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
+    buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
+    auto:n=>{const h=ownedHorse(n,id);if(h.status==='deceased')throw Error('Cannot train a deceased horse.');h.autoTrain=!h.autoTrain;},
+    'today-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>scheduledTraining(n,h)),
+    'all-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player'&&h.status==='active').forEach(h=>h.autoTrain=true),
+    'stop-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>h.autoTrain=false),
+    train:n=>{if(!train(n,ownedHorse(n,id),true))throw Error('Training is paused by rest, recovery, age, fatigue or race preparation.');},
+    vet:n=>{ownedHorse(n,id);vet(n,id);},
+    rehab:n=>{ownedHorse(n,id);vet(n,id,'rehab');},
+    clearance:n=>{ownedHorse(n,id);vet(n,id,'clear');},
+    farrier:n=>{ownedHorse(n,id);farrier(n,id);},
+    retire:n=>retire(n,id),
+    inspect:n=>inspect(n,id),
+    dispose:n=>dispose(n,id),
+    withdraw:n=>withdrawListing(n,id),
+    scratch:n=>scratchRace(n,id,b.dataset.horseId),
+    hire:n=>hire(n,id),dismiss:n=>dismiss(n,id),
+    restore:async n=>Object.assign(n,await backupCareer()),
+  };
+  if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Saved to this browser.');
+});
+app.addEventListener('submit',async e=>{
+  e.preventDefault();if(busy)return;const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
+  if(kind==='setup'){
+    collectSetup();busy=true;render();
+    try{const candidate=createWorld({...draft,catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)});await saveCareer(candidate);world=candidate;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];state.damId=null;state.sireId=null;notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
+  }
+  if(!world)return;
+  if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
+  const actions={
+    rename:n=>rename(n,id,f.get('name')),
+    country:n=>{changeCountry(n,f.get('country'));state.raceCountry=f.get('country');},
+    settings:n=>{
+      if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
+      const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
+      n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','debug'])n.settings[key]=f.has(key);
+    },
+    care:n=>setCare(n,id,{feed:f.get('feed'),turnout:Number(f.get('turnout')),bit:f.get('bit'),accessory:f.get('accessory'),autoCare:f.has('autoCare'),autoVet:f.has('autoVet'),autoFarrier:f.has('autoFarrier')}),
+    travel:n=>travel(n,id,f.get('country')),
+    entry:n=>enterRace(n,id,f.get('horseId'),f.get('jockeyId'),f.get('tactic')),
+    farrier:n=>{ownedHorse(n,id);farrier(n,id,f.get('shoe'));},
+    list:n=>listHorse(n,id,f.get('amount'),f.get('kind')),
+    bid:n=>bid(n,id,f.get('amount')),
+    cover:n=>cover(n,f.get('damId'),f.get('sireId'),f.get('method'),f.get('batchId')),
+    collect:n=>collect(n,f.get('sireId')),batch:n=>transferBatch(n,id,f.get('owner'),f.get('country')),
+  };
+  if(actions[kind])await update(actions[kind]);
+});
+app.addEventListener('input',e=>{if(e.target.id==='search'){state.query=e.target.value;state.page=0;const pos=e.target.selectionStart;render();const input=app.querySelector('#search');input.focus();input.setSelectionRange(pos,pos);}});
+app.addEventListener('change',async e=>{
+  if(e.target.matches('[data-choose]')){const counter=document.querySelector('#selected-count');if(counter)counter.textContent=`${document.querySelectorAll('[data-choose]:checked').length} horses selected`;return;}
+  if(e.target.matches('[data-filter]')){state[e.target.name]=e.target.value;state.page=0;render();return;}
+  if(e.target.matches('[data-pair]')){const form=e.target.closest('form'),f=new FormData(form);state.damId=f.get('damId');state.sireId=f.get('sireId');render();return;}
+  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{const candidate=decode(await file.text());if(world)exportCareer();await saveCareer(candidate);world=candidate;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
+});
+app.innerHTML='<main><p role="status">Loading your saved career…</p></main>';
+try{world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career<input id="import" type="file" accept=".json,application/json"></label><button data-action="restore">Restore previous autosave</button></main>`;}
+if(world||!notice)render();

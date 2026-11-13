@@ -1,1 +1,12 @@
-{"name":"thoroughbred-stable-manager","version":"0.1.0","private":true,"type":"module","scripts":{"test":"node --test","dev":"python3 -m http.server 5173 --bind 0.0.0.0","build":"node scripts/build.js"}}
+{
+  "name": "thoroughbred-stable-manager",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "python3 -m http.server 5173 --bind 0.0.0.0",
+    "build": "node scripts/build.js",
+    "test:long": "node scripts/check-decade.js"
+  }
+}
