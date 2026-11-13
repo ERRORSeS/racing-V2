@@ -1,4 +1,4 @@
-import { chronologicalDays, educationSession, startingSession } from './youngstock.js';
+import { chronologicalDays, educationSession, startingSession, createStartingPlan, startingBlocker } from './youngstock.js';
 import { scheduleIndex } from './reservations.js';
 import { WORKOUTS, SKILL_DEFINITIONS } from './skill-definitions.js';
 import { usableCeiling } from './development.js';
@@ -79,7 +79,11 @@ export function train(w,h,manual=false,activity=null) {
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
  if(h.youngstock&&h.status==='active'&&!h.medicalCase&&!(h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage))){
   if(chronologicalDays(h,w.day)<720)return educationSession(w,h);
-  if(h.youngstock.starting.status==='not_started')return educationSession(w,h);
+  if(h.youngstock.starting.status==='not_started'){
+   if(!h.autoTrain)return educationSession(w,h);
+   if(startingBlocker(w,h))return false;
+   createStartingPlan(w,h,h.youngstock.starting.pace);
+  }
   if(h.youngstock.starting.status!=='complete')return startingSession(w,h);
  }
  const young=age(h,w.day)<2,restricted=!!h.medicalCase||h.status==='retired'||h.therapy?.status==='active'||h.clearance==='Controlled Light Work'||h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage);
@@ -139,4 +143,19 @@ export function scheduledTraining(w,h) {
   if(w.day%4===0)return 'Scheduled rest day';
   if(h.clearance==='No Work')return 'Paused for veterinary restriction';
   return train(w,h)?'Completed today':'Paused for fatigue, travel, age or race preparation';
+}
+
+// Read-only explanation shared by the daily table and automation.
+export function trainingStatus(w,h){
+ if(h.lastTrainingDay===w.day)return 'Completed today';
+ if(!h.autoTrain&&!(h.youngstock?.autoEducation&&chronologicalDays(h,w.day)<720))return 'Program off';
+ if(w.day%4===0)return 'Scheduled rest day';
+ if(h.clearance==='No Work')return 'Paused for veterinary restriction';
+ const p=h.youngstock?.starting;
+ if(p&&chronologicalDays(h,w.day)>=720&&p.status!=='complete'){
+  if(p.status==='paused')return 'Starting paused — resume the starting plan';
+  const reason=startingBlocker(w,h);if(reason)return reason;
+  return p.status==='not_started'?'Auto starting will begin on the next eligible session':`Starting ${p.step}/10 — ${p.milestones[p.step]?.name}`;
+ }
+ return 'Awaiting eligible daily session';
 }

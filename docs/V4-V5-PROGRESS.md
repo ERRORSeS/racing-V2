@@ -2,6 +2,14 @@
 
 This is the first working implementation increment against the cumulative V4 and V5 master specifications and both tab guides. It does **not** complete those specifications. The PDF acceptance IDs below identify requirements touched, not a claim that each entire requirement has passed.
 
+## Auto-starting follow-up
+
+Auto Training now automatically creates a starting plan for an eligible unstarted horse and progresses its checkpoints daily. Younger horses receive handling education. Explicitly paused plans remain paused until resumed. Manual Start Horse also enables daily automation; the screen explains rest days, same-day limits and exact readiness blockers.
+
+Navigation keeps the twelve management tabs and restores Calendar, News & Press Room, Travel, Hall of Fame, Settings and release progress in a visible World & Tools group. Phone navigation wraps into a grid instead of hiding destinations in a horizontal strip.
+
+Auction follow-up adds minimum bid increments, checks combined leading-bid commitments, disallows self-outbidding, records sold/passed-in/failed/withdrawn outcomes and explains failed settlement. Closed private listings are unavailable. Market exposes sale-channel/My bids/My listings filters, leader/next bid, bid history and archived outcomes. Advanced auction sessions/proxy bids/contracts remain pending.
+
 ## Included in this increment
 
 - Ordinary calendar: four six-race meetings per month and jurisdiction, juvenile maiden/novice/allowance/stakes divisions and older divisions, rotating names/distances/going/classes, two-month publication, deterministic cycle/meeting/fixture IDs, persisted idempotency log, retained booked fixtures and results. Current/Next/All month filters. Existing terminal cancellation remains when eligible runners are insufficient.

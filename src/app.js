@@ -1,4 +1,4 @@
-import { startHorse, startingSession, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
+import { startHorse, startingSession, startingSessionReason, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
 import { mountGuide } from './guide.js';
 import { editGenetics, dnaPanel } from './editing.js';
 import { LOCI } from './genetics.js';
@@ -70,7 +70,7 @@ app.addEventListener('click',async e=>{
     'begin-weaning':n=>beginWeaning(n,id),
     'pause-weaning':n=>{const p=ownedHorse(n,id).youngstock.weaning;if(p.startDay==null||p.stage==='complete')throw Error('No active weaning plan.');p.paused=!p.paused;},
     'pause-starting':n=>{const p=ownedHorse(n,id).youngstock.starting;if(p.status==='complete')throw Error('Starting already complete.');p.status='paused';},
-    'starting-session':n=>{if(!startingSession(n,ownedHorse(n,id)))throw Error('Start or resume the plan, or wait for an eligible rested day.');},
+    'starting-session':n=>{const h=ownedHorse(n,id),reason=startingSessionReason(n,h);if(reason)throw Error(reason);if(!startingSession(n,h))throw Error('Starting session is currently unavailable.');},
     'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
     'follow-horse':n=>{if(n.followedHorses.includes(id))n.followedHorses=n.followedHorses.filter(x=>x!==id);else n.followedHorses.push(id);},buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
     auto:n=>{const h=ownedHorse(n,id);if(h.status==='deceased')throw Error('Cannot train a deceased horse.');h.autoTrain=!h.autoTrain;},
