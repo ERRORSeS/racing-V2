@@ -10,6 +10,7 @@ export function reviewBreak(w,horseId){const h=ownedHorse(w,horseId),b=h.breakPl
 export function startTherapy(w,horseId,months=9,type='Long-Term Soundness Therapy'){
  const h=ownedHorse(w,horseId);if(h.status==='deceased'||!Number.isInteger(months)||months<6||months>12)throw Error('Therapy requires a live horse and a 6–12 month program.');
  if(h.therapy?.status==='active')throw Error('Therapy is already active.');
+ const medical=w.medical.find(m=>m.id===h.medicalCase);if(medical?.decision==='pending'){medical.decision='treat_return';medical.decisionDay=w.day;}
  charge(w,h,RULES.rehabFee,'Long-term soundness therapy',h.id);
  const startCeiling=h.potentialSoundnessCeiling,target=Math.min(h.irreversibleSoundnessLimit,startCeiling+6);
  h.therapy={id:id(w,'therapy'),startDay:w.day,endDay:w.day+months*30,type,status:'active',caseId:h.medicalCase,startCeiling,target,monthlyCost:'15000',nextReview:w.day+30,milestones:[],totalCost:RULES.rehabFee,stage:'Controlled Rehabilitation'};

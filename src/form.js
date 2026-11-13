@@ -20,4 +20,4 @@ export function formFactor(w,h,raceKey){
  if(traits.includes('Unpredictable')||traits.includes('Hot-And-Cold Performer')||traits.includes('Notoriously Unpredictable'))volatility=Math.max(.12,volatility*2);
  return 1+p.currentForm+(draw(`${w.seed}:${h.id}:${raceKey}:day-performance`)-.5)*2*Math.min(.20,volatility);
 }
-export function recordForm(w,h,start){initializeForm(w,h);h.reliability.recentRaceOutputs.push({resultId:start.resultId,day:start.day,rating:start.performanceRating,formFactor:start.formVariation,distance:start.distance,surface:start.surface});h.reliability.recentRaceOutputs=h.reliability.recentRaceOutputs.slice(-40);h.reliability.observedConfidence=Math.min(1,h.starts.length/12);}
+export function recordForm(w,h,start){if(start.performanceRating==null)return;initializeForm(w,h);h.reliability.recentRaceOutputs.push({resultId:start.resultId,day:start.day,rating:start.performanceRating,formFactor:start.formVariation,distance:start.distance,surface:start.surface});h.reliability.recentRaceOutputs=h.reliability.recentRaceOutputs.slice(-40);h.reliability.observedConfidence=Math.min(1,h.starts.length/12);}

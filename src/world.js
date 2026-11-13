@@ -1,7 +1,9 @@
+import { rotateAuctions } from './auction-catalog.js';
+import { autoRegister } from './auto-register.js';
 import { updateForm } from './form.js';
 import { youngstockDay, initializeYoungstock, createStartingPlan } from './youngstock.js';
 import { updateStudFees } from './stud.js';
-import { seedHistory } from './history.js';
+import { seedHistory, seedPedigreeCareers } from './history.js';
 import { FIELD_DENSITY } from './race-rules.js';
 import { processTravel } from './travel.js';
 import { monthlyDigest } from './media.js';
@@ -23,7 +25,7 @@ export function createWorld(config) {
   if(!COUNTRIES[config.country])throw Error('Choose a supported country.');if(!config.starters?.length)throw Error('Add at least one starter.');
   const w={schema:1,seed:config.seed||'first-light',rng:seed(config.seed||'first-light'),sequence:0,day:0,ownerName:config.owner||'Owner',stableName:config.stable||'First Light Racing',country:config.country,unlimited:config.unlimited??true,balance:'0',horses:{},owners:{player:{name:config.stable||'First Light Racing',country:config.country},archive:{name:'Historical breeding archive',country:config.country}},events:[],ledger:[],listings:[],fixtures:[],sessions:[]};
   // Exact money parser and additive defaults are shared with save migration.
-  upgrade(w);w.settings.expandedGenetics=!!config.expandedGenetics;w.settings.fieldDensity=config.fieldDensity||'Balanced';w.settings.historyYears=config.historyYears??10;w.settings.instantTravel=config.instantTravel??false;w.settings.creativeMode=!!config.creativeMode;w.settings.revealPotential=!!config.revealPotential;
+  upgrade(w);w.settings.fatalities=config.fatalities??true;w.settings.expandedGenetics=!!config.expandedGenetics;w.settings.fieldDensity=config.fieldDensity||'Balanced';w.settings.historyYears=config.historyYears??10;w.settings.instantTravel=config.instantTravel??false;w.settings.creativeMode=!!config.creativeMode;w.settings.revealPotential=!!config.revealPotential;
   const catalog=config.catalog?prepareStarters(config.catalog):null;
   const prepared=new Map();
   if(catalog)for(const opts of config.starters.filter(o=>o.catalogId)){
@@ -35,7 +37,7 @@ export function createWorld(config) {
     const owner=id(w,'owner');w.owners[owner]={name:`${c} ${['Oak','Crown','River','Hill'][i]} Racing`,country:c,balance:'5000000000',reputation:50};
     const count=FIELD_DENSITY[w.settings.fieldDensity].activePerStable;
     for(let j=0;j<count+4;j++){
-      const breeding=j>=count,born=breeding?-(6+(i+j)%10)*360:j===count-1?-1800:j>=count-2?-1440:-720;let parentOptions={};if(c==='USA'&&i===0&&j===count){const sire=deepLine(w,c,born-1800,8),dam=horse(w,'archive',c,{sex:'filly'},1,born-2160);parentOptions={sireId:sire.id,damId:dam.id};}const h=horse(w,owner,c,{...(breeding?{sex:j<count+2?'colt':'filly'}:{}),...parentOptions},1,born);
+      const breeding=j>=count,born=breeding?-(6+(i+j)%10)*360:j===count-1?-1800:j>=count-2?-1440:j>=count-4?-1080:-720;let parentOptions={};if(c==='USA'&&i===0&&j===count){const sire=deepLine(w,c,born-1800,8),dam=horse(w,'archive',c,{sex:'filly'},1,born-2160);parentOptions={sireId:sire.id,damId:dam.id};}const h=horse(w,owner,c,{...(breeding?{sex:j<count+2?'colt':'filly'}:{}),...parentOptions},1,born);
       if(breeding){h.status='retired';h.brood=true;h.studFee=String(250000+(i+j)%8*250000);}else h.autoTrain=true;
       h.historyRecorded=true;
       if(j===0||j===count-1||j===count+1)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:String(RULES.marketPriceBase+integer(w,0,30000000)),sold:false,closed:false,kind:i%2===0?'private':'auction',reserve:'1000000',bids:[],day:0,endDay:7});
@@ -61,7 +63,7 @@ export function createWorld(config) {
    if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
    if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
   }
-  upgrade(w);if(w.settings.historyYears>0)seedHistory(w,w.settings.historyYears);updateStudFees(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
+  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
 }
 import { cents } from './rules.js';
 function setInitialBalance(w,balance){w.balance=cents(balance);}
@@ -89,7 +91,7 @@ export function advanceWorld(w,days) {
     for(const h of Object.values(w.horses)){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
     for(const h of Object.values(w.horses))dailyCare(w,h);
-    seedReserves(w);planNpcEntries(w);
+    seedReserves(w);planNpcEntries(w);autoRegister(w);
     for(const h of Object.values(w.horses)){
       if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active')h.autoTrain=true;
       if(h.owner!=='archive')scheduledTraining(w,h);
@@ -100,8 +102,8 @@ export function advanceWorld(w,days) {
     if(w.day%30===0){
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);
       for(const s of w.staff)if(s.owner==='player'){try{transact(w,-BigInt(s.wage),'Staff wages',s.id);}catch{event(w,'staff',`Wage unpaid for ${s.name}; service suspended.`);s.owner='unpaid';}}
-      npcMonth(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
-      if(w.settings.autoRace)for(const h of Object.values(w.horses).filter(h=>h.owner==='player'&&h.status==='active')){const f=w.fixtures.find(f=>f.day>w.day&&!eligibility(w,h,f));if(f){const j=w.jockeys.find(j=>!w.fixtures.some(x=>x.day===f.day&&x.entries.some(e=>e.jockeyId===j.id)));if(j)try{enterRace(w,f.id,h.id,j.id);}catch{/* No unsafe entry or unaffordable booking. */}}}
+      npcMonth(w);rotateAuctions(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
+
     }
   }
   event(w,'calendar',`Advanced ${days} days; care, training, races, medical plans, markets and pregnancies processed.`);

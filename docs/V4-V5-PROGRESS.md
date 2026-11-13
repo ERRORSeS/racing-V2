@@ -1,3 +1,5 @@
+Latest update: see [MANAGEMENT-UPDATE.md](MANAGEMENT-UPDATE.md) for the new medical, guide, registration/USA qualification, training, auction, pedigree and performance work. The older increment map below is historical and does not supersede that report. Full international championship and advanced contract/proxy-bidding requirements remain open.
+
 # V4 / V5 implementation progress
 
 This is the first working implementation increment against the cumulative V4 and V5 master specifications and both tab guides. It does **not** complete those specifications. The PDF acceptance IDs below identify requirements touched, not a claim that each entire requirement has passed.

@@ -1,6 +1,6 @@
 import { SKILL_IDS } from './skill-definitions.js';
 export const RULES = Object.freeze({
-  schema: 5, monthDays: 30, yearDays: 360, trainingGain: 0.45,
+  schema: 6, monthDays: 30, yearDays: 360, trainingGain: 0.9,
   trainingFatigue: 9, restRecovery: 7, marketPriceBase: 250000,
   saveKey: 'thoroughbred-racing.world.v1', // Retain original key for automatic migration.
   minRaceSoundness: 80, maxRaceFatigue: 55, minRaceRest: 5,

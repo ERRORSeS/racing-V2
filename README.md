@@ -1,3 +1,7 @@
+# Current management update
+
+New race-level guidance, selective news, injury decisions, per-horse registration, stronger monthly training, category-based auction events, simulated founder careers and background saving. See [the feature/compatibility report](docs/MANAGEMENT-UPDATE.md) and [race-level guide](docs/RACE-LEVEL-GUIDE.md).
+
 # V4/V5 work in progress
 
 The next implementation increment adds youngstock care, growth, gradual weaning, formal starting and rotating meetings. See [the coverage and remaining-work map](docs/V4-V5-PROGRESS.md). This is not a completed V4/V5 release.

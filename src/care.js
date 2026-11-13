@@ -1,3 +1,4 @@
+import { INJURY_TYPES, chooseInjury } from './injuries.js';
 import { chronologicalDays, educationSession, startingSession, createStartingPlan, startingBlocker } from './youngstock.js';
 import { scheduleIndex } from './reservations.js';
 import { WORKOUTS, SKILL_DEFINITIONS } from './skill-definitions.js';
@@ -33,24 +34,26 @@ export function setCare(w,horseId,plan) {
   event(w,'care',`Care plan saved: ${h.feed}, ${h.turnout} hours turnout; equipment refitted.`,h.id);
 }
 export { scratchEntries } from './core.js';
-export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain') {
+export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain',context='incident',typeId=null) {
   if(h.medicalCase||h.status==='deceased')return null;
   if(!SEVERITIES[severity])throw Error('Unknown medical severity.');
   const [min,max]=SEVERITIES[severity], duration=integer(w,min,max);
-  const m={id:id(w,'medical'),horseId:h.id,day:w.day,severity,diagnosis,minDays:min,maxDays:max,recoveryDay:w.day+duration,followUp:w.day+30,status:'active',rehab:false,ceiling:severity==='Very Severe'?75:severity==='Severe'?90:100};
+  const m={id:id(w,'medical'),horseId:h.id,day:w.day,severity,diagnosis,minDays:min,maxDays:max,recoveryDay:w.day+duration,followUp:w.day+30,status:'active',context,typeId:typeId||'custom',prognosis:INJURY_TYPES[typeId]?.notes||'Veterinary reassessment determines the safe return outlook.',decision:h.owner==='player'?'pending':'treat_return',decisionDay:h.owner==='player'?null:w.day,rehab:h.owner!=='player',ceiling:severity==='Very Severe'?75:severity==='Severe'?90:100};
   w.medical.push(m);h.medicalCase=m.id;h.clearance='No Work';h.soundness=Math.min(h.soundness,severity==='Easy'?75:severity==='Medium'?65:45);h.turnout=Math.min(2,h.turnout);h.exposureDay=w.day;
   h.irreversibleSoundnessLimit=Math.min(h.irreversibleSoundnessLimit??100,m.ceiling);h.potentialSoundnessCeiling=Math.min(h.potentialSoundnessCeiling??100,severity==='Severe'?82:severity==='Very Severe'?65:100);h.soundnessHistory.push({day:w.day,current:h.soundness,ceiling:h.potentialSoundnessCeiling,structuralLimit:h.irreversibleSoundnessLimit,reason:diagnosis});
   scratchEntries(w,h,'veterinary restriction');event(w,'medical',`${h.name}: ${diagnosis}, ${severity}. Recovery estimate ${min}–${max} days; veterinary clearance required.`,h.id);
-  if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<.015){h.status='deceased';h.clearance='No Work';m.status='closed';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
+  if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<(INJURY_TYPES[typeId]?.fatalRisk??.015)){h.status='deceased';h.clearance='No Work';m.status='closed';m.outcome='Fatal complication';h.medicalCase=null;h.brood=false;h.autoTrain=false;h.autoRace=false;h.autoRaceStatus='Deceased; registration off.';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
   return m;
 }
 export function vet(w,horseId,action='examine') {
   const h=w.horses[horseId];if(!h||h.status==='deceased')throw Error('A live horse is required.');
   const m=w.medical.find(x=>x.id===h.medicalCase);
   if(action==='rehab'&&!m)throw Error('No medical case requires rehabilitation.');
+  if(action==='clear'&&m?.decision==='pending')throw Error('Choose a treatment or retirement plan before return clearance.');
+  if(action==='clear'&&m&&m.ceiling<80)throw Error('Permanent racing restriction: discuss comfort care and retirement.');
   if(action==='clear'&&(h.therapy?.status==='active'||m&&(w.day<m.recoveryDay||h.soundness<RULES.minRaceSoundness)))throw Error('Recovery is incomplete; a clearance cannot bypass the medical plan.');
   charge(w,h,action==='rehab'?RULES.rehabFee:RULES.vetFee,'Veterinary service',h.id);
-  if(action==='rehab'){m.rehab=true;m.therapyStart??=w.day;m.therapyEnd=Math.max(m.recoveryDay,w.day+180);h.clearance='Controlled Light Work';}
+  if(action==='rehab'){m.decision='treat_return';m.decisionDay??=w.day;m.rehab=true;m.therapyStart??=w.day;m.therapyEnd=Math.max(m.recoveryDay,w.day+180);h.clearance='Controlled Light Work';}
   if(action==='clear'&&m){m.status='cleared';h.medicalCase=null;h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';}
   if(action==='clear'&&!m&&h.soundness<80)throw Error('Soundness remains below racing clearance.');
   if(action==='clear'&&!m)h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';
@@ -68,12 +71,13 @@ export function farrier(w,horseId,shoe='Standard') {
 }
 export function retire(w,horseId,breeding=true) {
   const h=ownedHorse(w,horseId);if(h.status==='deceased')throw Error('This horse is deceased.');if(h.status==='retired')throw Error('Already retired.');
-  h.status='retired';h.retiredDay=w.day;h.brood=breeding&&h.sex!=='gelding';h.autoTrain=false;scratchEntries(w,h,'permanent retirement');event(w,'life',`${h.name} retired from racing${h.brood?' for breeding':''}.`,h.id);
+  h.status='retired';h.retiredDay=w.day;h.brood=breeding&&h.sex!=='gelding';h.autoTrain=false;h.autoRace=false;h.autoRaceStatus='Retired; automatic registration off.';scratchEntries(w,h,'permanent retirement');event(w,'life',`${h.name} retired from racing${h.brood?' for breeding':''}.`,h.id);
 }
 export function exposure(w,h,context) {
   if(h.medicalCase||h.status==='deceased'||h.exposureDay===w.day)return;h.exposureDay=w.day;
-  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?3:1);
-  if(random(w)<risk){const r=random(w),severity=r<.65?'Easy':r<.85?'Medium':r<.95?'More Than Medium':r<.995?'Severe':'Very Severe';injure(w,h,severity,severity==='Very Severe'?'Bone fracture':severity==='Severe'?'Tendon concern':'Soft-tissue strain');}
+  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?5:context==='training'?2:1);
+  if(random(w)<risk){const type=chooseInjury(w,context,random);return injure(w,h,type.severity,type.label,context,type.id);}
+  return null;
 }
 export function train(w,h,manual=false,activity=null) {
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
@@ -97,7 +101,8 @@ export function train(w,h,manual=false,activity=null) {
  if(workout==='Auto Balanced'){
   const candidates=Object.keys(WORKOUTS).filter(k=>!['Auto Balanced','Rest','Light exercise','Youngstock groundwork'].includes(k));
   const ceilings=Object.fromEntries(SKILLS.map(key=>[key,usableCeiling(h,key,w.day)])),scores=Object.fromEntries(candidates.map(name=>[name,WORKOUTS[name].primary.reduce((n,key)=>n+Math.max(0,ceilings[key]-h.skills[key])/Math.max(1,h.potential[key]),0)/Math.max(1,WORKOUTS[name].primary.length)]));
-  workout=candidates.sort((a,b)=>scores[b]-scores[a]||(h.workoutCounts[a]||0)-(h.workoutCounts[b]||0))[0];
+  const specialist=h.distance<=1600?'Sprint work':'Extended gallop';
+  workout=[1,2,5].includes(w.day%8)&&scores[specialist]>.04?specialist:candidates.sort((a,b)=>scores[b]-scores[a]||(h.workoutCounts[a]||0)-(h.workoutCounts[b]||0))[0];
  }
  const plan=WORKOUTS[workout];if(age(h,w.day)<plan.minAge)return false;
  const modifiers=traitModifiers(h,{phase:'training'}),trainer=w.staff.find(s=>s.owner===h.owner&&s.role==='Trainer'),quality=trainer?(.85+trainer.skill/300):1,changes=[];
@@ -124,10 +129,14 @@ export function dailyCare(w,h) {
   if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(traitModifiers(h,{phase:'care'}).values.hoof||0)*3));
   const m=w.medical.find(x=>x.id===h.medicalCase);
   if(m&&m.status==='active'){
-    const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(h.potentialSoundnessCeiling??m.ceiling,h.soundness+(m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1)*(1+(traitModifiers(h,{phase:'vet'}).values.veterinary||0)));
-    if(w.day>=m.recoveryDay&&m.ceiling<80&&h.status!=='retired'){h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;h.clearance='Light Work';m.status='chronic';h.medicalCase=null;event(w,'medical',`${h.name}: permanent racing retirement required after chronic injury. Breeding soundness must be reassessed.`,h.id);}
+    const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(h.potentialSoundnessCeiling??m.ceiling,h.soundness+(m.decision==='pending'?.025:m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1)*(1+(traitModifiers(h,{phase:'vet'}).values.veterinary||0)));
+    if(w.day>=m.recoveryDay&&m.decision!=='pending'&&(h.status==='retired'||m.decision==='treat_comfort')){m.status='closed';m.outcome='Comfort-care recovery reviewed';h.medicalCase=null;h.clearance='Light Work';event(w,'medical',`${h.name}: comfort care reviewed; racing clearance has not been granted.`,h.id);}
+    if(w.day>=m.recoveryDay&&m.ceiling<80&&h.status!=='retired'&&m.status==='active'){
+      h.clearance='Light Work';if(h.owner!=='player'){h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;m.status='closed';h.medicalCase=null;}
+      if(!m.retirementNotified){m.retirementNotified=true;event(w,'medical',`${h.name}: permanent racing restriction; retirement and aftercare are recommended.`,h.id);}
+    }
     if(w.day>=m.followUp){m.followUp+=30;event(w,'medical',`${h.name}: follow-up review due; current soundness ${h.soundness.toFixed(1)}.`,h.id);}
-    if(w.day>=m.recoveryDay&&h.soundness>=80&&h.autoVet){try{vet(w,h.id,'clear');}catch{/* Budget shortage leaves restriction in place. */}}
+    if(m.status==='active'&&m.decision!=='pending'&&w.day>=m.recoveryDay&&h.soundness>=80&&h.autoVet){try{vet(w,h.id,'clear');}catch{/* Budget shortage leaves restriction in place. */}}
   }
   if(h.autoFarrier&&w.day>=h.farrierDue){try{farrier(w,h.id,h.shoes||'Standard');}catch{/* Budget shortage leaves hoof-care due. */}}
   if(w.settings.operatingCosts&&h.autoCare){try{charge(w,h,'2000','Daily care',h.id);}catch{h.acuteStress='Care payment overdue';}}
@@ -147,10 +156,14 @@ export function scheduledTraining(w,h) {
 
 // Read-only explanation shared by the daily table and automation.
 export function trainingStatus(w,h){
+ if(h.status==='deceased')return 'Deceased; career archived';
+ if(h.medicalCase)return `Veterinary restriction: ${w.medical.find(m=>m.id===h.medicalCase)?.diagnosis||'assessment required'}`;
  if(h.lastTrainingDay===w.day)return 'Completed today';
  if(!h.autoTrain&&!(h.youngstock?.autoEducation&&chronologicalDays(h,w.day)<720))return 'Program off';
  if(w.day%4===0)return 'Scheduled rest day';
  if(h.clearance==='No Work')return 'Paused for veterinary restriction';
+ if(h.soundness<80&&h.status==='active')return 'Below safe training soundness; follow veterinary plan.';
+ if(h.fatigue>55)return 'Rest needed for fatigue';
  const p=h.youngstock?.starting;
  if(p&&chronologicalDays(h,w.day)>=720&&p.status!=='complete'){
   if(p.status==='paused')return 'Starting paused — resume the starting plan';
@@ -158,4 +171,19 @@ export function trainingStatus(w,h){
   return p.status==='not_started'?'Auto starting will begin on the next eligible session':`Starting ${p.step}/10 — ${p.milestones[p.step]?.name}`;
  }
  return 'Awaiting eligible daily session';
+}
+
+export function medicalDecision(w,horseId,choice){
+ const h=ownedHorse(w,horseId),m=w.medical.find(m=>m.id===h.medicalCase&&m.status==='active');
+ if(!m||h.status==='deceased')throw Error('No active injury needs a care decision.');
+ if(!['treat_return','treat_comfort','retire','retire_breeding'].includes(choice))throw Error('Choose treatment, comfort care or retirement.');
+ if(m.decision===choice)throw Error('This care plan is already active.');
+ if(choice==='treat_return'&&(m.ceiling<80||h.status==='retired'))throw Error('A racing return is not medically available. Choose comfort care or retirement.');
+ const retiring=choice.startsWith('retire');if(retiring&&h.status==='retired')throw Error('Already retired; choose comfort care.');
+ charge(w,h,RULES.rehabFee,'Injury treatment plan',m.id);
+ if(m.decision==='pending')m.recoveryDay=Math.max(m.recoveryDay,w.day+integer(w,m.minDays,m.maxDays));
+ m.decision=choice;m.decisionDay=w.day;m.rehab=true;m.therapyStart??=w.day;h.clearance='No Work';
+ if(retiring)retire(w,h.id,choice==='retire_breeding');
+ event(w,'medical',`${h.name}: ${choice==='treat_return'?'treat and reassess for racing':choice==='treat_comfort'?'comfort-care treatment':'retirement with continuing aftercare'} selected. Recovery estimate ${m.minDays}–${m.maxDays} days; return is never guaranteed.`,h.id);
+ return m;
 }
