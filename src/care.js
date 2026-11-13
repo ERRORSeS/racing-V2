@@ -76,7 +76,7 @@ export function retire(w,horseId,breeding=true) {
 }
 export function exposure(w,h,context) {
   if(h.medicalCase||h.status==='deceased'||h.exposureDay===w.day)return;h.exposureDay=w.day;
-  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*racingYearsRisk(h)*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?5:context==='training'?2:1);
+  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(['race','training'].includes(context)?racingYearsRisk(h):1)*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?5:context==='training'?2:1);
   if(random(w)<risk){const type=chooseInjury(w,context,random);return injure(w,h,type.severity,type.label,context,type.id);}
   return null;
 }
