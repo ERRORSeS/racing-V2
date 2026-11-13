@@ -1,3 +1,5 @@
+import { initializeRacingYears } from './racing-years.js';
+import { invalidateFamily } from './family-index.js';
 import { initializeForm } from './form.js';
 import { initializeYoungstock } from './youngstock.js';
 import { invalidateSchedule } from './reservations.js';
@@ -15,12 +17,12 @@ export function horse(w,owner,country,options={},depth=0,born=-720){
  h.ownership=[{owner,day:w.day,price:'0',seller:null}];h.studFee='500000';h.coat.grayGene=h.coat.gray?'Gg':'gg';h.coat.tobianoGene=options.tobiano?'Tt':'tt';
  h.traits=[...new Set(Array.from({length:3},()=>pick(w,TRAITS)))];
  h.surface=options.surface||COUNTRIES[country].surface;h.distance=options.distance||pick(w,[1200,1600,2000,2400]);if(options.base==='chestnut')h.coat.extension='ee';if(options.base==='black'){h.coat.extension='EE';h.coat.agouti='aa';}if(options.base==='bay'){h.coat.extension='EE';h.coat.agouti='AA';}if(options.shade)h.coat.shade=options.shade;if(options.gray!=null)h.coat.gray=options.gray;if(options.face)h.coat.face=options.face;h.coat.tobiano=!!options.tobiano;h.coat.grayGene=h.coat.gray?'Gg':'gg';
- w.horses[h.id]=h;invalidateSchedule(w);
+ w.horses[h.id]=h;invalidateSchedule(w);invalidateFamily(w);
  if(options.sireId||options.damId){h.sire=options.sireId||null;h.dam=options.damId||null;}else if(depth>0){const sire=horse(w,'archive',country,{sex:'colt'},depth-1,born-1800),dam=horse(w,'archive',country,{sex:'filly'},depth-1,born-2160);sire.status=dam.status='retired';h.sire=sire.id;h.dam=dam.id;
 }
- initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);
+ initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);initializeRacingYears(w,h);
 
- return h;
+ invalidateFamily(w);return h;
 }
 export function rename(w,horseId,newName){const h=w.horses[horseId];if(!h||h.owner!=='player')throw Error('Only owned horses may be renamed.');newName=newName.trim();if(!newName||/[<>]/.test(newName)||newName.length>18||Object.values(w.horses).some(x=>x.id!==h.id&&x.name.toLowerCase()===newName.toLowerCase()))throw Error('Use a unique registered name of 1–18 characters.');h.formerNames.push(h.name);h.name=newName;event(w,'identity',`Registered name changed to ${newName}.`,h.id);}
 export function transact(w,amount,category,source){const next=BigInt(w.balance)+BigInt(amount);if(!w.unlimited&&next<0n)throw Error('Insufficient funds.');w.balance=next.toString();w.ledger.push({id:id(w,'ledger'),day:w.day,amount:String(amount),category,source,balance:w.balance});}

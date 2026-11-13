@@ -19,6 +19,7 @@ export function validate(w){
  for(const h of Object.values(w.horses)){
   if(!['filly','colt','gelding'].includes(h.sex)||!['active','retired','deceased'].includes(h.status)||!COUNTRIES[h.location]||!Array.isArray(h.traits)||!Array.isArray(h.ownership)||!h.gear||!Number.isFinite(h.condition)||h.condition<1||h.condition>9||!Number.isFinite(h.hoofHealth)||h.hoofHealth<0||h.hoofHealth>100)throw Error('Invalid horse care or identity.');
   if(h.autoRace!=null&&typeof h.autoRace!=='boolean'||h.autoRaceInterval!=null&&(!Number.isInteger(h.autoRaceInterval)||h.autoRaceInterval<5||h.autoRaceInterval>90)||h.autoRaceMaxTier!=null&&!['Auto','2','3','4','5','6','7'].includes(String(h.autoRaceMaxTier)))throw Error('Invalid per-horse race policy.');
+  if(h.safeRacingYears!=null&&(!Number.isFinite(h.safeRacingYears)||h.safeRacingYears < -20||h.safeRacingYears>10))throw Error('Invalid safe racing-year reserve.');
   if(h.sire&&w.horses[h.sire].sex!=='colt'||h.dam&&w.horses[h.dam].sex!=='filly')throw Error('Invalid parent sex.');
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
   if(h.medicalCase&&!w.medical.some(m=>m.id===h.medicalCase&&m.horseId===h.id&&m.status==='active'))throw Error('Broken medical reference.');
@@ -61,8 +62,9 @@ async function dbRead(key){const db=await database();return new Promise((resolve
 export async function pack(text){if(typeof CompressionStream==='undefined')return text;return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob();}
 export async function unpack(data){if(typeof data==='string')return data;return new Response(data.stream().pipeThrough(new DecompressionStream('gzip'))).text();}
 export async function saveCareer(w){
- const data=await pack(encode(w)),db=await database();
+ validate(w);const data={format:'first-light-native-v1',world:w},db=await database();
  await new Promise((resolve,reject)=>{const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');previous.onsuccess=()=>{if(previous.result)store.put(previous.result,'backup');store.put(data,'current');};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});db.close();
 }
-export async function loadCareer(){const data=await dbRead('current');if(data)return decode(await unpack(data));const legacy=typeof localStorage==='undefined'?null:load();if(legacy)await saveCareer(legacy);return legacy;}
-export async function backupCareer(){const data=await dbRead('backup');if(data)return decode(await unpack(data));const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
+function readSnapshot(data){return data?.format==='first-light-native-v1'?validate(upgrade(data.world)):unpack(data).then(decode);}
+export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy)await saveCareer(legacy);return legacy;}
+export async function backupCareer(){const data=await dbRead('backup');if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}

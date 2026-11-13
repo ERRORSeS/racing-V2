@@ -22,6 +22,7 @@ export { event, horse, rename, setBalance, phenotype, clearJournal, journal, cha
 export { buy } from './market.js';
 export { train } from './care.js';
 export function createWorld(config) {
+  if([config.stable,config.owner,config.seed].some(value=>/[<>]/.test(String(value||''))))throw Error('Use plain text for owner, stable and seed.');
   if(!COUNTRIES[config.country])throw Error('Choose a supported country.');if(!config.starters?.length)throw Error('Add at least one starter.');
   const w={schema:1,seed:config.seed||'first-light',rng:seed(config.seed||'first-light'),sequence:0,day:0,ownerName:config.owner||'Owner',stableName:config.stable||'First Light Racing',country:config.country,unlimited:config.unlimited??true,balance:'0',horses:{},owners:{player:{name:config.stable||'First Light Racing',country:config.country},archive:{name:'Historical breeding archive',country:config.country}},events:[],ledger:[],listings:[],fixtures:[],sessions:[]};
   // Exact money parser and additive defaults are shared with save migration.
@@ -91,7 +92,7 @@ export function advanceWorld(w,days) {
     for(const h of Object.values(w.horses)){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
     for(const h of Object.values(w.horses))dailyCare(w,h);
-    seedReserves(w);planNpcEntries(w);autoRegister(w);
+    planNpcEntries(w);autoRegister(w);
     for(const h of Object.values(w.horses)){
       if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active')h.autoTrain=true;
       if(h.owner!=='archive')scheduledTraining(w,h);
@@ -109,13 +110,6 @@ export function advanceWorld(w,days) {
   event(w,'calendar',`Advanced ${days} days; care, training, races, medical plans, markets and pregnancies processed.`);
 }
 
-function seedReserves(w){
- for(const f of w.fixtures.filter(f=>f.status==='scheduled'&&f.day-w.day===1&&['Maiden','Novice','Allowance','Conditions','Open Stakes'].includes(f.grade))){
-  const health=fieldHealth(w,f);if(health.currentEntries+health.eligibleAvailable>=(f.minStarters||2))continue;
-  const owners=Object.keys(w.owners).filter(key=>!['archive','player'].includes(key)&&w.owners[key].country===f.country);if(!owners.length)continue;
-  for(let i=0;i<2;i++){const h=horse(w,owners[i%owners.length],f.country,{},1,w.day-720);h.historyRecorded=true;h.autoTrain=true;h.location=f.country;event(w,'world',`Persistent reserve prospect ${h.name} joins ${w.owners[h.owner].name} before declarations.`,h.id);}
- }
-}
 
 export function setFieldDensity(w,density){
  if(!FIELD_DENSITY[density])throw Error('Choose Sparse, Balanced or Busy.');w.settings.fieldDensity=density;

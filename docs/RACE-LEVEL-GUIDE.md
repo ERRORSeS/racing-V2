@@ -2,7 +2,7 @@
 
 Starting → Maiden → Novice/Allowance → Open Stakes → Listed → G3 → G2 → G1. Claiming and Handicap are parallel routes. This is coaching guidance, not a mandatory unlock ladder. Suggestions refer to relevant current skills on the 0–100 scale; genetic caps, health and actual opponents still matter.
 
-All normal entries need completed starting, chronological age of 24 months, the published official racing age/sex conditions, veterinary clearance, soundness ≥80, hoof health ≥65, fatigue ≤55, compatible registration/location, five days race recovery and available bookings.
+All normal entries need completed starting, chronological age of 24 months, the published official racing age/sex conditions, veterinary clearance, clinical physical condition ≥80 (separate from safe racing years), hoof health ≥65, fatigue ≤55, compatible registration/location, five days race recovery and available bookings.
 
 ## Trial
 

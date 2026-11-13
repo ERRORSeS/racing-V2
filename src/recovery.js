@@ -1,3 +1,4 @@
+import { initializeRacingYears } from './racing-years.js';
 import { RULES, clamp, age } from './rules.js';
 import { event, charge, scratchEntries, ownedHorse } from './core.js';
 import { id } from './random.js';
@@ -12,8 +13,9 @@ export function startTherapy(w,horseId,months=9,type='Long-Term Soundness Therap
  if(h.therapy?.status==='active')throw Error('Therapy is already active.');
  const medical=w.medical.find(m=>m.id===h.medicalCase);if(medical?.decision==='pending'){medical.decision='treat_return';medical.decisionDay=w.day;}
  charge(w,h,RULES.rehabFee,'Long-term soundness therapy',h.id);
+ initializeRacingYears(w,h);
  const startCeiling=h.potentialSoundnessCeiling,target=Math.min(h.irreversibleSoundnessLimit,startCeiling+6);
- h.therapy={id:id(w,'therapy'),startDay:w.day,endDay:w.day+months*30,type,status:'active',caseId:h.medicalCase,startCeiling,target,monthlyCost:'15000',nextReview:w.day+30,milestones:[],totalCost:RULES.rehabFee,stage:'Controlled Rehabilitation'};
+ h.therapy={id:id(w,'therapy'),startDay:w.day,endDay:w.day+months*30,type,status:'active',caseId:h.medicalCase,safeYearGain:months/12,safeYearCredited:0,startCeiling,target,monthlyCost:'15000',nextReview:w.day+30,milestones:[],totalCost:RULES.rehabFee,stage:'Controlled Rehabilitation'};
  h.clearance='Controlled Light Work';scratchEntries(w,h,'long-term rehabilitation');event(w,'medical',`${h.name}: ${months}-month ${type}; recoverable ceiling ${startCeiling.toFixed(1)} to at most ${target.toFixed(1)}, irreversible limit ${h.irreversibleSoundnessLimit}.`,h.id);
 }
 export function recoveryDay(w,h){
@@ -24,6 +26,7 @@ export function recoveryDay(w,h){
  }
  const t=h.therapy;if(t?.status==='active'){
   const before=h.potentialSoundnessCeiling,progress=clamp((w.day-t.startDay)/(t.endDay-t.startDay),0,1);
+  const safeCredit=(t.safeYearGain||0)*progress,extra=Math.max(0,safeCredit-(t.safeYearCredited||0));h.safeRacingYears=Math.min(10,(h.safeRacingYears??0)+extra);t.safeYearCredited=safeCredit;
   h.potentialSoundnessCeiling=Math.min(h.irreversibleSoundnessLimit,t.startCeiling+(t.target-t.startCeiling)*progress);
   h.soundness=Math.min(h.potentialSoundnessCeiling,h.soundness+.08*(h.hoofHealth>=70?1:.5)*(age(h,w.day)>18?.7:1));
   if(w.day>=t.nextReview){t.nextReview+=30;t.milestones.push({day:w.day,current:h.soundness,ceiling:h.potentialSoundnessCeiling});h.soundnessHistory.push({day:w.day,oldCeiling:before,ceiling:h.potentialSoundnessCeiling,current:h.soundness,reason:'Monthly therapy reassessment'});try{charge(w,h,t.monthlyCost,'Therapy review',t.id);t.totalCost=(BigInt(t.totalCost)+BigInt(t.monthlyCost)).toString();}catch{t.status='paused';}event(w,'medical',`${h.name}: therapy review, current ${h.soundness.toFixed(1)}, recoverable ceiling ${h.potentialSoundnessCeiling.toFixed(1)}.`,h.id);}
