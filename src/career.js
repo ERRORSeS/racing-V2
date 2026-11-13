@@ -11,6 +11,7 @@ export function career(h) {
     starts: starts.length, wins, seconds, thirds,
     record: `${starts.length}(${wins}-${seconds}-${thirds})`,
     earnings: starts.reduce((n, s) => n + BigInt(s.prize || '0'), 0n).toString(),
+    stakesWins: starts.filter(s=>s.place===1&&(s.tier||0)>=4).length,blackType:starts.some(s=>s.blackType&&s.place<=3),highestGrade:starts.slice().sort((a,b)=>(b.tier||0)-(a.tier||0))[0]?.grade||null,lastFive:starts.slice(-5).map(s=>s.place),
     best: starts.length ? Math.min(...starts.map(s => s.place)) : null,
   };
 }
@@ -26,7 +27,7 @@ export function relatives(w, h) {
 // Numerator relationship matrix over all reachable ancestors. Unknown founders are unrelated.
 export function kinship(w, first, second) {
   const nodes = new Map();
-  function visit(id) { if (!id || nodes.has(id)) return; const h = w.horses[id]; if (!h) return; nodes.set(id, h); visit(h.sire); visit(h.dam); }
+  function visit(id,depth=0) { if (!id || nodes.has(id)||depth>12) return; const h = w.horses[id]; if (!h) return; nodes.set(id, h); visit(h.sire,depth+1); visit(h.dam,depth+1); }
   visit(first); visit(second);
   const sorted = [...nodes.values()].sort((a,b) => a.born-b.born || a.id.localeCompare(b.id));
   const rows = new Map();

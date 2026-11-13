@@ -1,3 +1,4 @@
+import { LOCI, incompatibleGenotypes } from './genetics.js';
 import { upgrade } from './upgrade.js';
 import {RULES,COUNTRIES,SKILLS} from './rules.js';
 export function validate(w){
@@ -10,7 +11,7 @@ export function validate(w){
  for(const e of w.events)if(e.horseId&&!w.horses[e.horseId])throw Error('Missing event horse.');
  if(!w.settings||!['official','alternative'].includes(w.settings.registryMode)||!Number.isFinite(w.settings.injuryFrequency)||w.settings.injuryFrequency<0||w.settings.injuryFrequency>10)throw Error('Invalid world settings.');
  if(!Number.isInteger(w.journalClearedThrough)||w.journalClearedThrough<0||w.journalClearedThrough>w.events.length)throw Error('Invalid journal cursor.');
- for(const key of ['medical','visits','coverings','freezer','jockeys','staff'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
+ for(const key of ['medical','visits','coverings','freezer','jockeys','staff','news','travel','awards','trackRecords','studBooks'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
  if(!w.results||typeof w.results!=='object')throw Error('Missing race archive.');
  const jockeys=new Set(w.jockeys.map(j=>j.id));
  for(const h of Object.values(w.horses)){
@@ -19,10 +20,18 @@ export function validate(w){
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
   if(h.medicalCase&&!w.medical.some(m=>m.id===h.medicalCase&&m.horseId===h.id&&m.status==='active'))throw Error('Broken medical reference.');
   if(h.pregnancy&&!w.coverings.some(c=>c.id===h.pregnancy&&c.damId===h.id&&c.status==='pregnant'))throw Error('Broken pregnancy reference.');
+  if(!h.genome||h.genome.version!==1||!h.genome.loci||!h.genome.quantitativeHaplotypes||!h.development||!Array.isArray(h.traitInstances))throw Error('Missing V3 genome or development records.');
+  for(const [key,def]of Object.entries(LOCI)){const locus=h.genome.loci[key];if(!locus||!Array.isArray(locus.alleles)||locus.alleles.length!==2||!['verified','inferred','unknown'].includes(locus.confidence)||locus.alleles.some(a=>a!==null&&!def.alleles.includes(a)))throw Error('Invalid genetic locus.');}
+  if(incompatibleGenotypes(h.genome))throw Error('Incompatible viable genotype.');
+  for(const block of Object.values(h.genome.quantitativeHaplotypes))if(!Array.isArray(block)||block.length!==2||block.some(hap=>!Array.isArray(hap)||hap.length!==8||hap.some(a=>!Number.isInteger(a)||a<0||a>4)))throw Error('Invalid quantitative haplotype.');
+  if(!Number.isFinite(h.potentialSoundnessCeiling)||!Number.isFinite(h.irreversibleSoundnessLimit)||h.potentialSoundnessCeiling<0||h.potentialSoundnessCeiling>h.irreversibleSoundnessLimit||h.irreversibleSoundnessLimit>100)throw Error('Invalid recoverable or irreversible soundness limit.');
   const seen=new Set();for(const start of h.starts){if(!w.results[start.resultId]||seen.has(start.resultId)||!/^\d+$/.test(start.prize)||!Number.isInteger(start.place)||start.place<1)throw Error('Invalid career start.');seen.add(start.resultId);}
  }
  for(const f of w.fixtures){if(!Number.isInteger(f.day)||!COUNTRIES[f.country]||!Array.isArray(f.entries)||!['scheduled','running','completed','closed','canceled'].includes(f.status))throw Error('Invalid fixture.');for(const e of f.entries)if(!w.horses[e.horseId]||!jockeys.has(e.jockeyId)||!w.owners[e.owner])throw Error('Invalid race entry.');if(f.resultId&&!w.results[f.resultId])throw Error('Missing committed result.');}
  for(const [key,r] of Object.entries(w.results)){if(r.id!==key||!w.fixtures.some(f=>f.id===r.fixtureId&&f.resultId===r.id)||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||!Number.isFinite(row.time)||row.time<=0||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
+ for(const t of w.travel)if(!w.horses[t.horseId]||!COUNTRIES[t.origin]||!COUNTRIES[t.destination]||t.readyDay<t.arrivalDay||t.arrivalDay<t.departureDay)throw Error('Invalid transport booking.');
+ for(const n of w.news)if(n.resultId&&!w.results[n.resultId]||n.horseIds.some(id=>!w.horses[id]))throw Error('News refers to a missing source.');
+ for(const a of w.awards)if(!w.horses[a.horseId]||a.evidence.some(id=>!w.results[id]))throw Error('Award has missing evidence.');
  for(const c of w.coverings)if(!w.horses[c.damId]||!w.horses[c.sireId]||c.foalId&&!w.horses[c.foalId])throw Error('Invalid covering.');
  for(const b of w.freezer)if(!w.horses[b.sireId]||!Number.isInteger(b.doses)||b.doses<0||!Number.isFinite(b.viability))throw Error('Invalid freezer stock.');
  return w;
@@ -34,8 +43,8 @@ export function save(w,storage=localStorage){const data=encode(w),old=storage.ge
 export function load(storage=localStorage){const data=storage.getItem(RULES.saveKey);return data?decode(data):null;}
 
 function validateLegacy(w) {
- if(!w||![1,2].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
- if(w.schema===2)validate(w);
+ if(!w||![1,2,3].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
+ if(w.schema===3)validate(w);
 }
 function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('first-light-careers',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function dbRead(key){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction('snapshots','readonly'),r=tx.objectStore('snapshots').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);tx.oncomplete=()=>db.close();});}

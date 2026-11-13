@@ -1,3 +1,6 @@
+import { inheritGenome, geneticCeilings, coatFromGenome, legacyGenome, matingGeneticRisk, incompatibleGenotypes } from './genetics.js';
+import { distanceFromGenome } from './development.js';
+import { traitModifiers } from './traits.js';
 import { RULES, SKILLS, age, clamp } from './rules.js';
 import { pick, integer, random, id } from './random.js';
 import { horse, event, charge, ownedHorse } from './core.js';
@@ -5,11 +8,12 @@ import { kinship } from './career.js';
 
 export function inheritPair(w,a,b) {return pick(w,a.split(''))+pick(w,b.split(''));}
 export function inheritedCoat(w,sire,dam) {
-  const extension=inheritPair(w,sire.coat.extension,dam.coat.extension),agouti=inheritPair(w,sire.coat.agouti,dam.coat.agouti);
-  const grayGene=inheritPair(w,sire.coat.grayGene|| (sire.coat.gray?'Gg':'gg'),dam.coat.grayGene||(dam.coat.gray?'Gg':'gg'));
-  const tobianoGene=inheritPair(w,sire.coat.tobianoGene||(sire.coat.tobiano?'Tt':'tt'),dam.coat.tobianoGene||(dam.coat.tobiano?'Tt':'tt'));
-  return {extension:extension.includes('E')?extension==='eE'?'Ee':extension:'ee',agouti:agouti==='aA'?'Aa':agouti,grayGene,gray:grayGene.includes('G'),tobianoGene,tobiano:tobianoGene.includes('T'),shade:random(w)<.7?pick(w,[sire.coat.shade,dam.coat.shade]):pick(w,['Light','Medium','Dark']),face:pick(w,[sire.coat.face,dam.coat.face,'Star','None','Snip']),legs:Array.from({length:4},(_,i)=>pick(w,[sire.coat.legs[i],dam.coat.legs[i],'None']))};
+ const sg=structuredClone(sire.genome||legacyGenome(sire)),dg=structuredClone(dam.genome||legacyGenome(dam));
+ // Legacy API accepts a verified coat panel; new births use their canonical genomes directly.
+ for(const [g,h]of [[sg,sire],[dg,dam]]){g.loci.MC1R.alleles=h.coat.extension.split('');g.loci.ASIP.alleles=h.coat.agouti.split('');g.loci.GRAY.alleles=(h.coat.grayGene||(h.coat.gray?'Gg':'gg')).split('');g.loci.TOBIANO.alleles=(h.coat.tobianoGene||'tt').split('');}
+ return coatFromGenome(inheritGenome(w,sg,dg));
 }
+export function studBook(w,sire){const year=Math.floor(w.day/360)+1;let book=w.studBooks.find(b=>b.sireId===sire.id&&b.year===year);if(!book){book={id:id(w,'book'),sireId:sire.id,year,capacity:60,reservations:[],advertisedFee:sire.studFee};w.studBooks.push(book);}return book;}
 export function breedingReason(w,dam,sire) {
   if(!dam||!sire)return 'Choose a mare and stallion.';
   if(dam.sex!=='filly'||sire.sex!=='colt')return 'A mare must be the dam and a stallion the sire.';
@@ -20,6 +24,8 @@ export function breedingReason(w,dam,sire) {
   if(dam.pregnancy||dam.postFoalingUntil>w.day)return 'Mare is pregnant or in post-foaling recovery.';
   if(dam.medicalCase||sire.medicalCase||dam.soundness<65||sire.soundness<65)return 'Breeding soundness clearance required.';
   if(w.settings.avoidCloseBreeding&&kinship(w,dam.id,sire.id)>=.0625)return 'Pedigree overlap exceeds the selected 6.25% limit.';
+  const risk=matingGeneticRisk(sire,dam);if(risk)return risk;
+  const book=w.studBooks?.find(b=>b.sireId===sire.id&&b.year===Math.floor(w.day/360)+1);if(book&&book.reservations.length>=book.capacity)return 'Stallion book is full for this season.';
   return null;
 }
 export function cover(w,damId,sireId,method='natural',batchId=null,npc=false) {
@@ -31,15 +37,17 @@ export function cover(w,damId,sireId,method='natural',batchId=null,npc=false) {
     if(w.settings.registryMode!=='alternative')throw Error('Frozen-semen AI cannot produce an official registered racing TB. Choose the fictional alternative registry to use a dose.');
     if(!batch||batch.sireId!==sireId||batch.owner!==dam.owner||batch.doses<1||batch.viability<50)throw Error('A viable owned semen dose is required.');
   }
+  if(method==='natural'&&(dam.location!==sire.location||dam.arrivalDay>w.day||sire.arrivalDay>w.day))throw Error('Natural service requires both horses settled at the same country/base; book travel first.');
+  const book=studBook(w,sire);
   const fee=sire.owner===dam.owner?'0':(sire.studFee||'500000');
   charge(w,dam,fee,'Stud service',sire.id);
   if(sire.owner==='player'&&dam.owner!=='player'){
     w.balance=(BigInt(w.balance)+BigInt(fee)).toString();w.ledger.push({id:id(w,'ledger'),day:w.day,amount:fee,category:'Stud income',source:sire.id,balance:w.balance});
   }else if(sire.owner!==dam.owner&&w.owners[sire.owner])w.owners[sire.owner].balance=(BigInt(w.owners[sire.owner].balance||'0')+BigInt(fee)).toString();
   if(method==='frozen')batch.doses--;
-  const conceived=random(w)<.86;
-  const c={id:id(w,'cover'),damId,sireId,owner:dam.owner,breeder:dam.owner,day:w.day,method,registryEligibility:method==='natural'?'official':'alternative',conceived,status:conceived?'pregnant':'not conceived',dueDay:conceived?w.day+integer(w,...RULES.gestation):null,fee};
-  w.coverings.push(c);if(conceived)dam.pregnancy=c.id;else dam.postFoalingUntil=w.day+20;
+  const fertility=clamp(.90-Math.max(0,age(dam,w.day)-12)*.025-Math.max(0,age(sire,w.day)-15)*.015+(traitModifiers(dam,{phase:'breeding'}).values.fertility||0),.45,.94);const conceived=random(w)<fertility;
+  const c={id:id(w,'cover'),damId,sireId,owner:dam.owner,breeder:dam.owner,day:w.day,method,registryEligibility:method==='natural'?'official':'alternative',conceived,status:conceived?'pregnant':'not conceived',dueDay:conceived?w.day+integer(w,...RULES.gestation):null,fee,bookId:book.id,originRules:structuredClone(w.settings)};
+  w.coverings.push(c);book.reservations.push(c.id);if(conceived)dam.pregnancy=c.id;else dam.postFoalingUntil=w.day+20;
   event(w,'breeding',`${dam.name} × ${sire.name}: ${conceived?'pregnancy established; foaling expected around day '+c.dueDay:'not conceived; reassessment in 20 days'}. ${method==='frozen'?'Fictional alternative registry.':'Natural covering.'}`,dam.id);return c;
 }
 export function foal(w,c) {
@@ -47,10 +55,11 @@ export function foal(w,c) {
   const dam=w.horses[c.damId],sire=w.horses[c.sireId];
   if(dam.status==='deceased'){c.status='lost';dam.pregnancy=null;return null;}
   const h=horse(w,dam.owner,dam.location,{sex:pick(w,['filly','colt'])},0,w.day);
-  h.sire=sire.id;h.dam=dam.id;h.breeder=c.breeder;h.historyRecorded=true;h.coat=inheritedCoat(w,sire,dam);h.registryEligibility=c.registryEligibility;h.breedingMethod=c.method;h.skills=Object.fromEntries(SKILLS.map(k=>[k,5]));
-  for(const k of SKILLS)h.potential[k]=clamp((sire.potential[k]+dam.potential[k])/2+integer(w,-12,12),10,100);
-  for(const k of Object.keys(h.conformation))h.conformation[k]=clamp((sire.conformation[k]+dam.conformation[k])/2+integer(w,-6,6)/10,1,10);
-  h.temperament=clamp((sire.temperament+dam.temperament)/2+integer(w,-15,15));h.spookiness=clamp((sire.spookiness+dam.spookiness)/2+integer(w,-15,15));h.surface=pick(w,[sire.surface,dam.surface]);h.distance=Math.round((sire.distance+dam.distance)/400)*200;h.traits=[...new Set([pick(w,sire.traits),pick(w,dam.traits),...h.traits.slice(0,1)])];
+  h.sire=sire.id;h.dam=dam.id;h.breeder=c.breeder;h.historyRecorded=true;h.genome=inheritGenome(w,sire.genome,dam.genome);if(incompatibleGenotypes(h.genome))throw Error('Incompatible genotype was blocked by the breeding safeguards.');h.coat=coatFromGenome(h.genome);h.registryEligibility=c.registryEligibility;h.breedingMethod=c.method;h.skills=Object.fromEntries(SKILLS.map(k=>[k,5]));
+  h.potential=geneticCeilings(h.genome);for(const key of SKILLS)h.skills[key]=Math.min(5,h.potential[key]*.25);h.originRules={coatMode:h.genome.modeAtBirth,registry:c.registryEligibility,creativeEdited:false};h.development.origin='geneticBirth';
+  for(const k of Object.keys(h.conformation))h.conformation[k]=clamp(4.5+h.potential.balance/25+integer(w,-15,15)/10*(1-(traitModifiers(sire,{phase:'breeding'}).values.conformation||0)*5),1,10);
+  h.temperament=clamp(h.potential.composure+integer(w,-10,10));h.spookiness=clamp(100-h.potential.focus+integer(w,-15,15));h.surface=['turf','dirt','synthetic'].sort((a,b)=>h.potential[b]-h.potential[a])[0];h.distance=distanceFromGenome(h);for(const t of h.traitInstances){t.source='inherited propensity expressed';t.manifestedDay=w.day;t.discoveredDay=null;t.provenance='Modeled predisposition expressed at birth; learned parental experiences are not inherited.';}
+
   dam.pregnancy=null;dam.postFoalingUntil=w.day+RULES.postFoalingRest;c.status='foaled';c.foalId=h.id;
   event(w,'birth',`${h.name} born to ${dam.name}, by ${sire.name}. ${h.registryEligibility==='alternative'?'Fictional alternative':'Official natural-service'} registry eligibility.`,h.id);event(w,'breeding',`${dam.name} foaled ${h.name}; ${RULES.postFoalingRest}-day recovery plan.`,dam.id);return h;
 }
