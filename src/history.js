@@ -24,3 +24,19 @@ export function seedHistory(w,years=10){
  for(const h of cohorts){const prior=saved.get(h.id);h.status=prior.status;h.arrivalDay=prior.arrivalDay;h.postFoalingUntil=prior.postFoalingUntil;h.soundness=prior.soundness;h.fatigue=prior.fatigue;h.fitness=prior.status==='retired'?65:prior.fitness;h.lastRaceDay=h.starts.at(-1)?.day??prior.lastRaceDay;if(h.status==='retired'){h.retiredDay=h.starts.at(-1)?.day??currentDay-30;h.studSince=Math.max(h.retiredDay+30,h.born+1080);}h.historyRecorded=h.starts.length>0;evaluateLegacy(w,h);}
  w.historySeeded=true;w.historySeeding={version:1,years,day:currentDay,description:'Canonical historical races were simulated in chronological cohorts. Fast historical races do not have detailed segment replays. No historical prize was credited to current accounts.'};
 }
+
+// Missing founder pedigrees receive shared, actually simulated career fixtures.
+// Existing recorded careers are never rewritten and no historic cash is paid today.
+export function seedPedigreeCareers(w){
+ const founders=Object.values(w.horses).filter(h=>h.owner==='archive'&&!h.starts.length&&!h.founderHistoryAssessed);if(!founders.length){w.pedigreeHistoryVersion=1;return;}
+ const currentDay=w.day,currentRng=w.rng,frequency=w.settings.injuryFrequency;w.rng=seed(`${w.seed}:pedigree-careers-v1`);w.settings.injuryFrequency=0;
+ const groups=new Map();for(const h of founders){const key=`${h.country}:${Math.floor(h.born/720)}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(h);}
+ for(const group of groups.values())for(let offset=0;offset<group.length;offset+=8){const runners=group.slice(offset,offset+8);if(runners.length===1){const h=founderRival(w,runners[0]);runners.push(h);}const saved=runners.map(h=>({h,state:{status:h.status,skills:h.skills,fitness:h.fitness,fatigue:h.fatigue,soundness:h.soundness,lastRaceDay:h.lastRaceDay,arrivalDay:h.arrivalDay,postFoalingUntil:h.postFoalingUntil,clearance:h.clearance}})),firstDay=Math.max(...runners.map(h=>h.born))+900;
+  for(const {h}of saved){h.status='active';h.clearance='Race-Cleared';h.soundness=100;h.fitness=85;h.fatigue=0;h.lastRaceDay=null;h.arrivalDay=firstDay-1;h.postFoalingUntil=firstDay-1;h.skills=Object.fromEntries(Object.keys(h.skills).map(k=>[k,h.potential[k]*.86]));}
+  for(let leg=0;leg<3;leg++){w.day=firstDay+leg*21;const c=RACE_CLASSES.find(c=>c.id===['maiden','allowance','open'][leg]),country=runners[0].country,fixtureId=id(w,'founder-fixture'),jockeys=w.jockeys.filter(j=>j.country===country);const f={id:fixtureId,seriesId:'founder-career-archive',day:w.day,country,track:COUNTRIES[country].track,surface:COUNTRIES[country].surface,distance:1600,title:`Founder Career ${classLabel(c,country)}`,grade:classLabel(c,country),classId:c.id,raceType:c.type,tier:c.tier,blackType:false,historical:true,founderArchive:true,provenance:'Shared founder career simulated when filling an unrecorded pedigree; not imported real-world history',status:'scheduled',phase:'EntriesOpen',entries:runners.map((h,i)=>({horseId:h.id,owner:h.owner,jockeyId:jockeys[i].id,tactic:'stalk',carriedWeight:56,gear:structuredClone(h.gear)})),minAge:2,maxAge:6,maxRunners:8,minStarters:2,targetFieldSize:runners.length,conditions:{},purse:c.purse,fee:'0',going:'good',course:{direction:'left',turns:2},resultId:null};w.fixtures.push(f);for(const h of runners)h.fatigue=0;resolveRace(w,f.id);}
+  for(const {h,state}of saved){Object.assign(h,state);h.historyRecorded=true;h.founderHistoryAssessed=true;h.founderHistoryProvenance='Three shared simulated founder fixtures; results and winnings are linked, current skills and money preserved.';}
+ }
+ w.day=currentDay;w.rng=currentRng;w.settings.injuryFrequency=frequency;w.pedigreeHistoryVersion=1;
+}
+import { horse as generateFounder } from './core.js';
+function founderRival(w,h){const rival=generateFounder(w,'archive',h.country,{},0,h.born);rival.status='retired';return rival;}

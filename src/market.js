@@ -1,15 +1,11 @@
+import { appraisal } from './valuation.js';
+import { attachAuction } from './auction-catalog.js';
 import { scratchEntries } from './care.js';
 import { age, cents } from './rules.js';
 import { id, random, integer } from './random.js';
 import { transact, event, ownedHorse } from './core.js';
 import { career } from './career.js';
-export function appraisal(w,h) {
-  const c=career(h),structure=Object.values(h.conformation).reduce((a,b)=>a+b,0)/Object.keys(h.conformation).length;
-  // Market observes schooling, structure and actual results, not hidden potential.
-  const dollars=5000+Math.pow((h.skills.speed+h.skills.stamina)/2,2)*18+Math.pow(structure,3)*80+c.wins*120000+Number(BigInt(c.earnings)/100n)*1.5;
-  const award=h.inspection?.grade==='Elite'?1.3:h.inspection?.grade==='Golden'?1.15:1;
-  return String(Math.round(Math.min(100000000,dollars)*100*(h.soundness/100)*award*(age(h,w.day)>15?.6:1)));
-}
+export { appraisal } from './valuation.js';
 export function saleBlocker(w,h){
  if(!h||h.status==='deceased')return 'This horse is no longer available for sale.';
  if(h.youngstock?.weaning.stage!=='complete'||Object.values(w.horses).some(x=>x.dam===h.id&&x.youngstock?.weaning.stage!=='complete'&&x.owner===h.owner))return 'Complete gradual weaning before an individual sale; dependent mare–foal pairs cannot be separated.';
@@ -33,7 +29,7 @@ export function buy(w,listingId) {
 export function listHorse(w,horseId,value,kind='private') {
   const h=ownedHorse(w,horseId),blocker=saleBlocker(w,h);if(blocker)throw Error(blocker);if(w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed))throw Error('Horse is already listed.');if(w.fixtures.some(f=>f.status==='scheduled'&&f.entries?.some(e=>e.horseId===h.id)))throw Error('Scratch race entries before listing.');
   const price=cents(value);if(BigInt(price)<=0n)throw Error('Price must be greater than zero.');if(!['private','auction'].includes(kind))throw Error('Choose private sale or auction.');
-  const l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind,sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],disclosure:h.medicalCase?`Active ${w.medical.find(m=>m.id===h.medicalCase)?.diagnosis}; ${h.clearance}`:`${h.clearance}; soundness ${h.soundness.toFixed(1)}`};w.listings.push(l);event(w,'market',`${h.name} listed for ${kind} sale with medical disclosures.`,h.id);return l;
+  const l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind,sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],disclosure:h.medicalCase?`Active ${w.medical.find(m=>m.id===h.medicalCase)?.diagnosis}; ${h.clearance}`:`${h.clearance}; soundness ${h.soundness.toFixed(1)}`};w.listings.push(l);attachAuction(w,l);event(w,'market',`${h.name} listed for ${kind} sale with medical disclosures.`,h.id);return l;
 }
 export function bid(w,listingId,value) {
   const l=w.listings.find(x=>x.id===listingId);if(!l||l.kind!=='auction'||l.sold||l.closed||l.endDay<=w.day)throw Error('Auction is closed.');if(l.seller==='player')throw Error('You cannot bid on your own horse.');
@@ -44,7 +40,7 @@ export function withdrawListing(w,listingId){const l=w.listings.find(x=>x.id===l
 export function marketDay(w) {
   for(const l of w.listings){if(l.sold||l.closed||l.lastMarketDay===w.day)continue;l.lastMarketDay=w.day;const h=w.horses[l.horseId],blocker=saleBlocker(w,h);if(blocker||h.owner!==l.seller){l.closed=true;l.status='withdrawn';l.closeReason=blocker||'Seller no longer owns the horse.';event(w,'market',`Listing ${l.id} withdrawn: ${l.closeReason}`,h.id);continue;}const value=BigInt(appraisal(w,h));
     if(l.kind==='auction'){
-      if(w.day<l.endDay&&l.lastNpcBidDay!==w.day&&random(w)<.3){l.lastNpcBidDay=w.day;const candidates=Object.entries(w.owners).filter(([key,o])=>!['player','archive',l.seller,l.bids.at(-1)?.owner].includes(key)&&BigInt(o.balance||'0')>BigInt(l.bids.at(-1)?.amount||'0'));const pair=candidates[integer(w,0,Math.max(0,candidates.length-1))];if(pair){const offer=BigInt(l.bids.at(-1)?.amount||'0')+BigInt(integer(w,100000,1000000));if(offer<value*14n/10n&&offer<BigInt(pair[1].balance))l.bids.push({owner:pair[0],amount:offer.toString(),day:w.day});}}
+      if(w.day<l.endDay&&l.lastNpcBidDay!==w.day&&random(w)<.3){l.lastNpcBidDay=w.day;const candidates=Object.entries(w.owners).filter(([key,o])=>!['player','archive',l.seller,l.bids.at(-1)?.owner].includes(key)&&BigInt(o.balance||'0')>BigInt(l.bids.at(-1)?.amount||'0'));const pair=candidates[integer(w,0,Math.max(0,candidates.length-1))];if(pair){const minimum=BigInt(l.bids.at(-1)?.amount||'0')+BigInt(integer(w,100000,1000000)),reserve=BigInt(l.reserve),offer=minimum<reserve&&reserve<=value*12n/10n?reserve:minimum;if(offer<value*14n/10n&&offer<BigInt(pair[1].balance))l.bids.push({owner:pair[0],amount:offer.toString(),day:w.day});}}
       if(w.day>=l.endDay){const top=l.bids.at(-1);
        if(!top||BigInt(top.amount)<BigInt(l.reserve)){l.status='passed_in';l.closeReason=top?'Reserve not met.':'No bids received.';}
        else try{transfer(w,l,top.owner,top.amount);}catch(error){l.status='settlement_failed';l.closeReason=error.message;event(w,'market',`Auction ${l.id} failed settlement: ${error.message} No ownership transfer.`,h.id);}

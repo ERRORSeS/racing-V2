@@ -15,6 +15,7 @@ export const RACE_CLASSES = Object.freeze([
 export function classDefinition(f){return RACE_CLASSES.find(c=>c.id===f.classId)||RACE_CLASSES.find(c=>classLabel(c,f.country)===f.grade)||RACE_CLASSES.find(c=>c.id==='open');}
 export function classLabel(c,country){return c.id.startsWith('g')?`${COUNTRIES[country].grade} ${c.label}`:c.id==='allowance'&&['UK','Ireland','France'].includes(country)?'Conditions':c.label;}
 export function conditionsFor(c,index=0){return {minAge:2,maxAge:12,sex:index%9===5?'filly':'open',maxWins:c.maxWins??null,minRating:c.minRating??null,maxRating:c.maxRating??null,minWins:null,bredIn:null};}
-export function observedRating(h){const starts=h.starts.filter(s=>s.performanceRating!=null).slice(-5);return starts.length>=3?Math.round(starts.reduce((n,s)=>n+s.performanceRating,0)/starts.length):null;}
+const ratingCache=new WeakMap();
+export function observedRating(h){const cached=ratingCache.get(h);if(cached?.starts===h.starts&&cached.length===h.starts.length)return cached.rating;const starts=[];for(let i=h.starts.length-1;i>=0&&starts.length<5;i--)if(h.starts[i].performanceRating!=null)starts.push(h.starts[i]);const rating=starts.length>=3?Math.round(starts.reduce((n,s)=>n+s.performanceRating,0)/starts.length):null;ratingCache.set(h,{starts:h.starts,length:h.starts.length,rating});return rating;}
 export function carriedWeight(h,f){const rating=observedRating(h);return Math.max(50,Math.min(63,f.raceType==='handicap'?53+((rating??65)-50)/10:56+(h.sex==='filly'?-1.5:0)));}
 export const FIELD_DENSITY={Sparse:{activePerStable:6,target:6},Balanced:{activePerStable:10,target:8},Busy:{activePerStable:16,target:12}};

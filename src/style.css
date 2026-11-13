@@ -12,3 +12,5 @@ aside{padding:24px 20px;overflow:auto}.brand span{font-size:22px;width:42px;padd
 /* Keep every destination visible on phones rather than hiding it off-screen. */
 aside>nav,aside>.brand,aside>.nav-label,aside>.aside-bottom{flex-shrink:0}
 @media(max-width:650px){aside nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible;gap:4px}aside nav button{min-width:0;white-space:normal;text-align:center;padding:10px 5px;overflow-wrap:anywhere}aside .nav-label{display:block;margin:14px 0 7px}aside .aside-bottom{display:none}}
+
+.auction-lots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.auction-lot{border:1px solid #dce0d3;border-radius:6px;padding:20px;min-width:0}.auction-lot p{overflow-wrap:anywhere}.auction-lot form{margin:15px 0}.auction-lot input{width:100%;box-sizing:border-box}@media(max-width:700px){.auction-lots{grid-template-columns:1fr}.guide-layout .table-wrap table{min-width:720px}}

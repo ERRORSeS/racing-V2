@@ -13,11 +13,12 @@ export function validate(w){
  if(!Number.isInteger(w.journalClearedThrough)||w.journalClearedThrough<0||w.journalClearedThrough>w.events.length)throw Error('Invalid journal cursor.');
  for(const key of ['medical','visits','coverings','freezer','jockeys','staff','news','travel','awards','trackRecords','studBooks'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
  if(!w.results||typeof w.results!=='object')throw Error('Missing race archive.');
- const jockeys=new Set(w.jockeys.map(j=>j.id));
+ const jockeys=new Set(w.jockeys.map(j=>j.id)),fixtureById=new Map(w.fixtures.map(f=>[f.id,f])),listingIds=new Set(w.listings.map(l=>l.id));
  if(new Set(w.fixtures.map(f=>f.id)).size!==w.fixtures.length)throw Error('Duplicate fixture identity.');
  if(!Array.isArray(w.calendarGenerationLog)||new Set(w.calendarGenerationLog.map(l=>l.key)).size!==w.calendarGenerationLog.length)throw Error('Invalid calendar generation log.');
  for(const h of Object.values(w.horses)){
   if(!['filly','colt','gelding'].includes(h.sex)||!['active','retired','deceased'].includes(h.status)||!COUNTRIES[h.location]||!Array.isArray(h.traits)||!Array.isArray(h.ownership)||!h.gear||!Number.isFinite(h.condition)||h.condition<1||h.condition>9||!Number.isFinite(h.hoofHealth)||h.hoofHealth<0||h.hoofHealth>100)throw Error('Invalid horse care or identity.');
+  if(h.autoRace!=null&&typeof h.autoRace!=='boolean'||h.autoRaceInterval!=null&&(!Number.isInteger(h.autoRaceInterval)||h.autoRaceInterval<5||h.autoRaceInterval>90)||h.autoRaceMaxTier!=null&&!['Auto','2','3','4','5','6','7'].includes(String(h.autoRaceMaxTier)))throw Error('Invalid per-horse race policy.');
   if(h.sire&&w.horses[h.sire].sex!=='colt'||h.dam&&w.horses[h.dam].sex!=='filly')throw Error('Invalid parent sex.');
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
   if(h.medicalCase&&!w.medical.some(m=>m.id===h.medicalCase&&m.horseId===h.id&&m.status==='active'))throw Error('Broken medical reference.');
@@ -32,13 +33,15 @@ export function validate(w){
   if(!y||!['nursing','preparing','gradual_transition','monitoring','complete'].includes(y.weaning?.stage)||!p||!['not_started','active','paused','blocked_medical','complete'].includes(p.status)||!Number.isInteger(p.step)||p.step<0||p.step>10||!Array.isArray(p.milestones)||p.milestones.length!==10||p.status==='complete'&&(p.step!==10||p.milestones.some(m=>m.status!=='passed')))throw Error('Invalid youngstock / starting state.');
   if(!Array.isArray(y.companions)||y.companions.some(id=>id===h.id||!w.horses[id])||!Array.isArray(y.education)||!Array.isArray(y.careLog)||Object.values(y.skills).some(v=>!Number.isFinite(v)||v<0||v>100))throw Error('Invalid youngstock care record.');
   if(!h.reliability||!Number.isFinite(h.reliability.currentForm)||Math.abs(h.reliability.currentForm)>.04||!Number.isFinite(h.reliability.dailyVolatility)||h.reliability.dailyVolatility<0||h.reliability.dailyVolatility>.3)throw Error('Invalid reliability profile.');
-  const seen=new Set();for(const start of h.starts){if(!w.results[start.resultId]||seen.has(start.resultId)||!/^\d+$/.test(start.prize)||!Number.isInteger(start.place)||start.place<1)throw Error('Invalid career start.');seen.add(start.resultId);}
+  const seen=new Set();for(const start of h.starts){if(!w.results[start.resultId]||seen.has(start.resultId)||!/^\d+$/.test(start.prize)||(start.outcome==='Pulled up'?start.place!==null||start.prize!=='0'||start.time!==null:!Number.isInteger(start.place)||start.place<1))throw Error('Invalid career start.');seen.add(start.resultId);}
  }
  for(const f of w.fixtures){if(!Number.isInteger(f.day)||!COUNTRIES[f.country]||!Array.isArray(f.entries)||!['scheduled','running','completed','closed','canceled'].includes(f.status))throw Error('Invalid fixture.');for(const e of f.entries)if(!w.horses[e.horseId]||!jockeys.has(e.jockeyId)||!w.owners[e.owner])throw Error('Invalid race entry.');if(f.resultId&&!w.results[f.resultId])throw Error('Missing committed result.');}
- for(const [key,r] of Object.entries(w.results)){if(r.id!==key||!w.fixtures.some(f=>f.id===r.fixtureId&&f.resultId===r.id)||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||!Number.isFinite(row.time)||row.time<=0||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
+ for(const [key,r] of Object.entries(w.results)){if(r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
  for(const t of w.travel)if(!w.horses[t.horseId]||!COUNTRIES[t.origin]||!COUNTRIES[t.destination]||t.readyDay<t.arrivalDay||t.arrivalDay<t.departureDay)throw Error('Invalid transport booking.');
  for(const n of w.news)if(n.resultId&&!w.results[n.resultId]||n.horseIds.some(id=>!w.horses[id]))throw Error('News refers to a missing source.');
  for(const a of w.awards)if(!w.horses[a.horseId]||a.evidence.some(id=>!w.results[id]))throw Error('Award has missing evidence.');
+ for(const point of w.qualifyingPoints||[])if(!w.horses[point.horseId]||!w.results[point.resultId]||!Number.isInteger(point.year)||!Number.isInteger(point.points)||point.points<=0)throw Error('Invalid qualification evidence.');
+ for(const auction of w.auctionEvents||[])if(!Array.isArray(auction.listingIds)||auction.listingIds.some(id=>!listingIds.has(id)))throw Error('Invalid auction catalog reference.');
  for(const c of w.coverings)if(!w.horses[c.damId]||!w.horses[c.sireId]||c.foalId&&!w.horses[c.foalId])throw Error('Invalid covering.');
  for(const b of w.freezer)if(!w.horses[b.sireId]||!Number.isInteger(b.doses)||b.doses<0||!Number.isFinite(b.viability))throw Error('Invalid freezer stock.');
  return w;
@@ -50,8 +53,8 @@ export function save(w,storage=localStorage){const data=encode(w),old=storage.ge
 export function load(storage=localStorage){const data=storage.getItem(RULES.saveKey);return data?decode(data):null;}
 
 function validateLegacy(w) {
- if(!w||![1,2,3,5].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
- if(w.schema===5)validate(w);
+ if(!w||![1,2,3,5,6].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
+ if(w.schema===6)validate(w);
 }
 function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('first-light-careers',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function dbRead(key){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction('snapshots','readonly'),r=tx.objectStore('snapshots').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);tx.oncomplete=()=>db.close();});}
@@ -61,5 +64,5 @@ export async function saveCareer(w){
  const data=await pack(encode(w)),db=await database();
  await new Promise((resolve,reject)=>{const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');previous.onsuccess=()=>{if(previous.result)store.put(previous.result,'backup');store.put(data,'current');};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});db.close();
 }
-export async function loadCareer(){const data=await dbRead('current');if(data)return decode(await unpack(data));const legacy=load();if(legacy)await saveCareer(legacy);return legacy;}
+export async function loadCareer(){const data=await dbRead('current');if(data)return decode(await unpack(data));const legacy=typeof localStorage==='undefined'?null:load();if(legacy)await saveCareer(legacy);return legacy;}
 export async function backupCareer(){const data=await dbRead('backup');if(data)return decode(await unpack(data));const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}

@@ -1,19 +1,22 @@
 import { age } from './rules.js';
 import { phenotype } from './core.js';
 
+const careerCache=new WeakMap();
 // Career totals are selectors over committed starts, never mutable display counters.
 export function career(h) {
+  const cached=careerCache.get(h);if(cached?.starts===h.starts&&cached.length===h.starts.length)return cached.value;
   const starts = h.starts.filter(s => s.status !== 'scratched');
   const wins = starts.filter(s => s.place === 1).length;
   const seconds = starts.filter(s => s.place === 2).length;
   const thirds = starts.filter(s => s.place === 3).length;
-  return {
+  const value={
     starts: starts.length, wins, seconds, thirds,
     record: `${starts.length}(${wins}-${seconds}-${thirds})`,
     earnings: starts.reduce((n, s) => n + BigInt(s.prize || '0'), 0n).toString(),
-    stakesWins: starts.filter(s=>s.place===1&&(s.tier||0)>=4).length,blackType:starts.some(s=>s.blackType&&s.place<=3),highestGrade:starts.slice().sort((a,b)=>(b.tier||0)-(a.tier||0))[0]?.grade||null,lastFive:starts.slice(-5).map(s=>s.place),
-    best: starts.length ? Math.min(...starts.map(s => s.place)) : null,
+    stakesWins: starts.filter(s=>s.place===1&&(s.tier||0)>=4).length,blackType:starts.some(s=>s.blackType&&s.place!=null&&s.place<=3),highestGrade:starts.slice().sort((a,b)=>(b.tier||0)-(a.tier||0))[0]?.grade||null,lastFive:starts.slice(-5).map(s=>s.place??'PU'),
+    best: starts.some(s=>s.place!=null) ? Math.min(...starts.filter(s=>s.place!=null).map(s=>s.place)) : null,
   };
+  careerCache.set(h,{starts:h.starts,length:h.starts.length,value});return value;
 }
 export function description(h, day) {
   const years = age(h, day), c = career(h);

@@ -122,6 +122,7 @@ export function setYoungstockCare(w,horseId,plan){
  const h=ownedHorse(w,horseId),y=h.youngstock;if(!['Nursing & forage','Growing horse ration','Youngstock ration','Starting ration'].includes(plan.diet))throw Error('Choose an appropriate growing-horse diet.');
  const d=chronologicalDays(h,w.day);if(d<180&&plan.diet!=='Nursing & forage')throw Error('A dependent foal needs nursing and forage care.');if(d<720&&plan.diet==='Starting ration')throw Error('Starting ration is reserved for chronological two-year-olds.');
  if(!Number.isFinite(plan.turnoutHours)||plan.turnoutHours<0||plan.turnoutHours>24)throw Error('Turnout must be 0–24 hours.');
+ if(/[<>]/.test(String(plan.socialGroup||'')))throw Error('Use plain text for the social group.');
  const companions=[...new Set(plan.companions||[])];for(const id of companions)if(!w.horses[id]||id===h.id||w.horses[id].status==='deceased'||w.horses[id].location!==h.location)throw Error('Choose live companions in the same country.');
  Object.assign(y,{diet:plan.diet,water:!!plan.water,shelter:!!plan.shelter,turnoutHours:plan.turnoutHours,companions,socialGroup:String(plan.socialGroup||'').trim(),autoCare:!!plan.autoCare,autoEducation:!!plan.autoEducation,autoWean:!!plan.autoWean});y.careLog.push({day:w.day,kind:'Plan updated',diet:y.diet,companions:[...companions]});event(w,'care',`${h.name}: youngstock care policy updated.`,h.id);
 }
