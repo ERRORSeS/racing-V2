@@ -1,3 +1,5 @@
+import { formFactor, recordForm } from './form.js';
+import { raceEducationBlocker } from './youngstock.js';
 import { scheduleIndex, reserveInIndex, invalidateSchedule } from './reservations.js';
 import { updateRecords } from './legacy.js';
 import { publishRace } from './media.js';
@@ -11,18 +13,11 @@ import { event, transact, charge, ownedHorse } from './core.js';
 import { career } from './career.js';
 import { exposure } from './care.js';
 
-export function schedule(w,start) {
-  for(let d=start+3;d<=start+30;d+=3)for(const country of Object.keys(COUNTRIES)){
-    if(w.fixtures.some(f=>f.day===d&&f.country===country))continue;
-    const index=Math.floor((d-start)/3)-1,rotating=RACE_CLASSES.filter(c=>!['trial','maiden'].includes(c.id));
-    const c=index%3===0?RACE_CLASSES.find(c=>c.id==='maiden'):rotating[(index+Math.floor(start/30))%rotating.length];
-    const seriesId=`series-${country}-${index}-${c.id}`,density=FIELD_DENSITY[w.settings.fieldDensity||'Balanced'];
-    w.fixtures.push({id:id(w,'fixture'),seriesId,day:d,country,track:COUNTRIES[country].track,surface:COUNTRIES[country].surface,distance:pick(w,c.id==='maiden'||c.id==='novice'?[1000,1200,1400,1600,1800]:[1200,1600,1800,2000,2400,2800]),title:`${['First Light','Horizon','Meadow','Crown','Meridian'][index%5]} ${classLabel(c,country)}`,grade:classLabel(c,country),classId:c.id,raceType:c.type,tier:c.tier,blackType:!!c.blackType,championship:c.id==='g1'&&index===9,status:'scheduled',phase:'EntriesOpen',entries:[],minAge:2,maxAge:12,maxRunners:Math.max(12,density.target),minStarters:2,targetFieldSize:density.target,conditions:conditionsFor(c,index),purse:c.purse,claimPrice:c.claimPrice||null,fee:'10000',going:pick(w,['firm','good','soft']),temperature:Math.round(16+14*Math.sin(d/360*2*Math.PI)),course:{direction:['Japan','Australia'].includes(country)?'right':'left',turns:index%3===0?0:2,undulating:['UK','Ireland'].includes(country)},resultId:null});
-  }
-}
+export { renewCalendar as schedule } from './race-catalog.js';
 export function eligibility(w,h,f) {
   if(!h||!f)return 'Choose a horse and fixture.';
   if(f.status!=='scheduled'||f.day<w.day)return 'This race is closed.';
+  const educationReason=raceEducationBlocker(w,h,f);if(educationReason)return educationReason;
   if(h.status!=='active')return 'This horse is permanently retired or deceased.';
   if(h.medicalCase||h.clearance!=='Race-Cleared'||h.soundness<RULES.minRaceSoundness)return 'Veterinary clearance required.';
   if(h.hoofHealth<65)return 'Hoof care is required before entry.';
@@ -89,7 +84,7 @@ export function resolveRace(w,fixtureId) {
     const surface=(.92+(values[f.surface]||50)/1000)*(1+(mods.values[f.surface]||0)+(mods.values.surface||0)),dist=1-Math.min(.15,Math.abs(h.distance-f.distance)/15000);
     const aptitude=(12.5+values.speed*.068)*surface*dist*(.96+values.muscle*.0004)*(.94+h.fitness*.0006)*(e.gear.fit<70?.97:1)*(1+(mods.values.tack||0))*(.94+h.soundness*.0006)*MOOD_FACTORS[h.mood]*(1-h.fatigue*.0007)*(h.acuteStress?.97:1)*(1-Math.abs(h.condition-5)*.006)*(1-((e.carriedWeight||56)-56)*.002);
     const experience=Math.min(5,h.starts.length*.1);const gate=clamp((experience+values.gate+j.start+(100-h.spookiness)+values.confidence*.2)/3.2+(mods.values.gate||0)*100)/100;
-    const formVariation=1+(random(w)-.5)*(RULES.raceFormVariation+(mods.values.variance||0));
+    const formVariation=formFactor(w,h,f.id);
     return {e,h,j,values,mods,familiarity,flags:new Set(),formVariation,gate:index+1,distance:0,currentSpeed:0,energy:100,time:null,splits:[],speed:aptitude*formVariation,delay:(1-gate)*.8+(1-values.breakReaction/100)*.3,stamina:values.stamina};
   });
   const raceEvents=[];
@@ -139,7 +134,7 @@ export function resolveRace(w,fixtureId) {
   highlights.push({time:rows[0].time,text:`${rows[0].name} wins in ${rows[0].time.toFixed(2)} seconds; ${rows[1].name} finishes second, ${rows[1].margin.toFixed(2)} lengths behind.`});
   const result={id:resultId,fixtureId:f.id,day:w.day,title:f.title,country:f.country,track:f.track,surface:f.surface,distance:f.distance,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,source:f.historical?'history seeded':'live',historical:!!f.historical,replayAvailable:!f.historical,events:raceEvents,rows,frames,highlights,incidents:[],key:`${w.seed}:${f.id}:${w.rng}`};
   w.results[resultId]=result;f.resultId=resultId;f.status='completed';f.phase='Settled';
-  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});h.lastRaceDay=w.day;h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
+  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});recordForm(w,h,h.starts.at(-1));h.lastRaceDay=w.day;h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
     if(!f.historical){if(row.owner==='player')transact(w,BigInt(row.prize),'Race prize',resultId);else w.owners[row.owner].balance=(BigInt(w.owners[row.owner].balance||'0')+BigInt(row.prize)).toString();}
     const j=w.jockeys.find(x=>x.id===row.jockeyId);j.starts++;if(row.place===1)j.wins++;
     event(w,'racing',`${h.name}: ${row.place}/${rows.length} in ${f.title}, ${f.distance}m ${f.surface}.`,h.id);const beforeCase=h.medicalCase;if(!f.historical)exposure(w,h,'race');if(!beforeCase&&h.medicalCase){const m=w.medical.find(m=>m.id===h.medicalCase);result.incidents.push({horseId:h.id,medicalCase:h.medicalCase,text:`Post-race veterinary assessment: ${m.diagnosis}, ${m.severity}. Racing restrictions applied.`});}

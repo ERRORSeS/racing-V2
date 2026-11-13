@@ -1,3 +1,4 @@
+import { chronologicalDays, educationSession, startingSession } from './youngstock.js';
 import { scheduleIndex } from './reservations.js';
 import { WORKOUTS, SKILL_DEFINITIONS } from './skill-definitions.js';
 import { usableCeiling } from './development.js';
@@ -9,6 +10,8 @@ import { event, charge, ownedHorse, scratchEntries } from './core.js';
 
 export function feedWarnings(h, day) {
   const warnings=[];
+  if(chronologicalDays(h,day)<720&&!['Young Horse','Balanced'].includes(h.feed))warnings.push('Youngstock require a growing-horse care ration; adult performance feed is unsuitable.');
+  if(h.youngstock&&chronologicalDays(h,day)<720){const y=h.youngstock;if(!y.water)warnings.push('Youngstock clean water needs attention.');if(!y.shelter)warnings.push('Youngstock shelter needs attention.');if(!y.companions.length)warnings.push('Youngstock need familiar social companions.');}
   if(h.feed==='Recovery'&&!h.medicalCase)warnings.push('Recovery feed is intended for medical rehabilitation.');
   if(h.feed==='Senior'&&age(h,day)<15)warnings.push('Senior feed is mismatched to a young horse.');
   if(h.feed==='Young Horse'&&age(h,day)>5)warnings.push('Young Horse feed is intended for growing horses.');
@@ -51,6 +54,7 @@ export function vet(w,horseId,action='examine') {
   if(action==='clear'&&m){m.status='cleared';h.medicalCase=null;h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';}
   if(action==='clear'&&!m&&h.soundness<80)throw Error('Soundness remains below racing clearance.');
   if(action==='clear'&&!m)h.clearance=h.status==='retired'?'Light Work':'Race-Cleared';
+  if(h.youngstock?.newbornCheck==='Recommended')h.youngstock.newbornCheck='Professional newborn assessment completed';
   const report=m?`${m.diagnosis}: ${m.severity}; ${h.soundness.toFixed(1)} soundness; ${h.clearance}. Follow-up day ${m.followUp}.`:`No active medical case. Soundness ${h.soundness.toFixed(1)}, hoof health ${h.hoofHealth.toFixed(1)}. ${h.clearance}.`;
   w.visits.push({id:id(w,'visit'),horseId:h.id,day:w.day,type:'vet',action,report});event(w,'medical',`${h.name}: ${action}. ${report}`,h.id);
 }
@@ -73,6 +77,11 @@ export function exposure(w,h,context) {
 }
 export function train(w,h,manual=false,activity=null) {
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
+ if(h.youngstock&&h.status==='active'&&!h.medicalCase&&!(h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage))){
+  if(chronologicalDays(h,w.day)<720)return educationSession(w,h);
+  if(h.youngstock.starting.status==='not_started')return educationSession(w,h);
+  if(h.youngstock.starting.status!=='complete')return startingSession(w,h);
+ }
  const young=age(h,w.day)<2,restricted=!!h.medicalCase||h.status==='retired'||h.therapy?.status==='active'||h.clearance==='Controlled Light Work'||h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage);
  if(h.clearance==='No Work'||restricted&&!manual&&!h.autoTrain)return false;
  let workout=activity||h.trainingPlan||'Auto Balanced';
@@ -125,7 +134,7 @@ export function dailyCare(w,h) {
   }
 }
 export function scheduledTraining(w,h) {
-  if(!h.autoTrain)return 'Off';
+  if(!h.autoTrain&&!(h.youngstock?.autoEducation&&chronologicalDays(h,w.day)<720))return 'Off';
   if(h.lastTrainingDay===w.day)return 'Already completed today';
   if(w.day%4===0)return 'Scheduled rest day';
   if(h.clearance==='No Work')return 'Paused for veterinary restriction';

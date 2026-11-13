@@ -3,3 +3,13 @@ export function publishRace(w,r){if(w.news.some(n=>n.resultId===r.id))return;con
 export function publishEvent(w,e){if(!['ownership','birth','life','travel','registry'].includes(e.type))return;w.news??=[];w.news.push({id:`news-${e.id}`,day:e.day,category:e.type==='birth'?'Breeding':e.type==='ownership'?'Bloodstock':e.type==='travel'?'International Campaigns':e.type==='registry'?'Registry':'Welfare / Retirement',country:e.horseId?w.horses[e.horseId]?.location||w.country:w.country,outlet:'Stable & Bloodline Gazette',headline:e.text.split('. ')[0],summary:e.text,body:e.text+' Fictional game-world report.',horseIds:e.horseId?[e.horseId]:[],resultId:null,sourceEventIds:[e.id],significance:2,read:false,bookmarked:false});}
 export function monthlyDigest(w){const races=Object.values(w.results).filter(r=>r.day>w.day-30&&r.day<=w.day&&!r.historical),births=w.events.filter(e=>e.type==='birth'&&e.day>w.day-30&&e.day<=w.day),sales=w.listings.filter(l=>l.sold&&l.saleDay>w.day-30&&l.saleDay<=w.day);const id=`digest-${w.day}`;if(w.news.some(n=>n.id===id))return;w.news.push({id,day:w.day,category:'Monthly Recap',country:'World',outlet:'First Light Monthly',headline:`Monthly review: ${races.length} races, ${births.length} births, ${sales.length} sales`,summary:`All outcomes were processed on their actual game days. Open individual race, horse and sale records for detail.`,body:races.slice(-12).map(r=>`${r.title}: ${r.rows[0].name}.`).join(' '),horseIds:[],sourceEventIds:races.map(r=>r.id),significance:5,read:false,bookmarked:false});}
 export function markNews(w,newsId,action){const n=w.news.find(n=>n.id===newsId);if(!n)throw Error('Article not found.');if(action==='bookmark')n.bookmarked=!n.bookmarked;else n.read=true;}
+
+export function respondToPress(w,storyId,tone){
+ const story=w.news.find(n=>n.id===storyId),r=story?.resultId&&w.results[story.resultId];
+ if(!r||r.historical||r.rows[0]?.owner!=='player'||(r.tier||0)<4)throw Error('This article has no post-race interview request for your stable.');
+ if(!['Credit the team','Focus on the horse','Cautious campaign plans','Decline'].includes(tone))throw Error('Choose a valid press response.');
+ w.pressResponses??=[];if(w.pressResponses.some(x=>x.storyId===storyId))throw Error('Interview already answered.');
+ const response={storyId,resultId:r.id,horseId:r.rows[0].horseId,day:w.day,tone};w.pressResponses.push(response);
+ if(tone!=='Decline')w.owners.player.reputation=Math.min(100,(w.owners.player.reputation||50)+.25);
+ return response;
+}

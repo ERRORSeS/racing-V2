@@ -1,10 +1,11 @@
+import { startHorse, startingSession, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
 import { mountGuide } from './guide.js';
 import { editGenetics, dnaPanel } from './editing.js';
 import { LOCI } from './genetics.js';
 import { SKILL_IDS } from './skill-definitions.js';
 import { putOnBreak, reviewBreak, startTherapy } from './recovery.js';
 import { cancelTravel } from './travel.js';
-import { markNews } from './media.js';
+import { markNews, respondToPress } from './media.js';
 import { prepareStarters, prospectCards } from './starters.js';
 import { COUNTRIES } from './rules.js';
 import { createWorld, advanceWorld, buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss, setFieldDensity } from './world.js';
@@ -20,7 +21,7 @@ import { shell, setupView } from './ui.js';
 const app=document.querySelector('#app');mountGuide();
 let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
-const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All'};
+const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Current'};
 function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,state,notice,busy);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 async function update(action,message='Saved to this browser.') {
@@ -35,7 +36,7 @@ async function advance(days){
     Object.assign(next,result);
   },`Advanced ${days} days and saved all scheduled events.`);
 }
-function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
+function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={starterEducation:f.get('starterEducation')||'Not started',stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
 function exportCareer(){const url=URL.createObjectURL(new Blob([encode(world)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function openHorse(id){if(state.selected)state.profileStack.push({id:state.selected,tab:state.profileTab});state.selected=id;state.profileTab='Overview';stopReplay();render();}
 app.addEventListener('click',async e=>{
@@ -47,6 +48,7 @@ app.addEventListener('click',async e=>{
   if(a==='cancel-setup'){settingUp=false;render();return;}
   if(!world&&a==='restore'){try{const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
   if(!world)return;
+  if(a==='youngstock-profile'){openHorse(id);state.profileTab='Youngstock & Starting';render();return;}
   if(a==='profile'){openHorse(id);return;}
   if(a==='back'){const previous=state.profileStack.pop();if(previous){state.selected=previous.id;state.profileTab=previous.tab;}else state.selected=null;render();return;}
   if(a==='profile-tab'){state.profileTab=id;render();return;}
@@ -63,12 +65,18 @@ app.addEventListener('click',async e=>{
   if(a==='new-career'){exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
   const actions={
+    interview:n=>respondToPress(n,id,b.dataset.tone),
+    'follow-stable':n=>{if(!n.owners[id])throw Error('Stable not found.');n.followedStables=n.followedStables.includes(id)?n.followedStables.filter(x=>x!==id):[...n.followedStables,id];},
+    'begin-weaning':n=>beginWeaning(n,id),
+    'pause-weaning':n=>{const p=ownedHorse(n,id).youngstock.weaning;if(p.startDay==null||p.stage==='complete')throw Error('No active weaning plan.');p.paused=!p.paused;},
+    'pause-starting':n=>{const p=ownedHorse(n,id).youngstock.starting;if(p.status==='complete')throw Error('Starting already complete.');p.status='paused';},
+    'starting-session':n=>{if(!startingSession(n,ownedHorse(n,id)))throw Error('Start or resume the plan, or wait for an eligible rested day.');},
     'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
     'follow-horse':n=>{if(n.followedHorses.includes(id))n.followedHorses=n.followedHorses.filter(x=>x!==id);else n.followedHorses.push(id);},buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
     auto:n=>{const h=ownedHorse(n,id);if(h.status==='deceased')throw Error('Cannot train a deceased horse.');h.autoTrain=!h.autoTrain;},
     'today-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>scheduledTraining(n,h)),
     'all-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player'&&h.status==='active').forEach(h=>h.autoTrain=true),
-    'stop-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>h.autoTrain=false),
+    'stop-auto':n=>Object.values(n.horses).filter(h=>h.owner==='player').forEach(h=>{h.autoTrain=false;if(h.youngstock)h.youngstock.autoEducation=false;}),
     train:n=>{if(!train(n,ownedHorse(n,id),true))throw Error('Training is paused by rest, recovery, age, fatigue or race preparation.');},
     vet:n=>{ownedHorse(n,id);vet(n,id);},
     rehab:n=>{ownedHorse(n,id);vet(n,id,'rehab');},
@@ -89,11 +97,14 @@ app.addEventListener('submit',async e=>{
   e.preventDefault();if(busy)return;const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
   if(kind==='setup'){
     collectSetup();busy=true;render();
-    try{const candidate=createWorld({...draft,catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)});await saveCareer(candidate);world=candidate;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];state.damId=null;state.sireId=null;notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
+    try{const candidate=createWorld({...draft,starterEducation:draft.starterEducation==='Creative race-ready'?'race_ready':draft.starterEducation==='Introduction started'?'introduction':'not_started',catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)});await saveCareer(candidate);world=candidate;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];state.damId=null;state.sireId=null;notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
   }
   if(!world)return;
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
   const actions={
+    starting:n=>{startHorse(n,id,f.get('pace'));ownedHorse(n,id).autoTrain=true;},
+    education:n=>{if(!educationSession(n,ownedHorse(n,id),f.get('activity')))throw Error('Education paused for rest, travel or medical care, or already completed today.');},
+    'youngstock-care':n=>setYoungstockCare(n,id,{diet:f.get('diet'),turnoutHours:Number(f.get('turnoutHours')),socialGroup:f.get('socialGroup'),companions:f.getAll('companion'),water:f.has('water'),shelter:f.has('shelter'),autoCare:f.has('autoCare'),autoEducation:f.has('autoEducation'),autoWean:f.has('autoWean')}),
     workout:n=>{const h=ownedHorse(n,id);h.trainingPlan=f.get('activity');if(!train(n,h,true,f.get('activity')))throw Error('This workout is not currently permitted.');},
     break:n=>putOnBreak(n,id,Number(f.get('days')),f.get('reason')),therapy:n=>startTherapy(n,id,Number(f.get('months'))),
     creative:n=>editGenetics(n,id,{loci:Object.fromEntries(Object.keys(LOCI).map(k=>[k,[f.get(`${k}-0`),f.get(`${k}-1`)]])),caps:Object.fromEntries(SKILL_IDS.map(k=>[k,Number(f.get(`cap-${k}`))]))},f.has('acknowledge')),
