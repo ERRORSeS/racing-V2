@@ -12,6 +12,7 @@ export function appraisal(w,h) {
 }
 export function transfer(w,l,buyer,price) {
   if(l.sold)throw Error('Listing already sold.');const h=w.horses[l.horseId],seller=h.owner;
+  if(h.youngstock?.weaning.stage!=='complete'||Object.values(w.horses).some(x=>x.dam===h.id&&x.youngstock?.weaning.stage!=='complete'&&x.owner===h.owner))throw Error('Complete gradual weaning before an individual sale; dependent mare–foal pairs cannot be separated.');
   if(seller!==l.seller)throw Error('Seller no longer owns this horse.');if(buyer===seller)throw Error('Cannot buy your own listing.');
   if(buyer==='player')transact(w,-BigInt(price),'Bloodstock purchase',l.id);else {const o=w.owners[buyer];if(!o||BigInt(o.balance)<BigInt(price))throw Error('Buyer budget is insufficient.');o.balance=(BigInt(o.balance)-BigInt(price)).toString();}
   if(seller==='player')transact(w,BigInt(price),'Bloodstock sale',l.id);else w.owners[seller].balance=(BigInt(w.owners[seller].balance||'0')+BigInt(price)).toString();

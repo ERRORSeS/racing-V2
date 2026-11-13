@@ -8,7 +8,7 @@ export function prepareStarters({country='USA',worldSeed='first-light',count=5}=
   const key=seed(`${worldSeed}:prospects:${country}`),w={day:0,rng:key,sequence:0,horses:{},owners:{player:{name:'Prospect selection',country},archive:{name:'Historical breeding archive',country}}};
   const roots=[];for(let i=0;i<count;i++)roots.push(horse(w,'player',country,{},2).id);
   const remap=id=>id?`prospect-${key}-${id}`:null;
-  const horses={};for(const h of Object.values(w.horses)){const x=structuredClone(h);x.id=remap(h.id);x.sire=remap(h.sire);x.dam=remap(h.dam);x.historyRecorded=roots.includes(h.id);horses[x.id]=x;}
+  const horses={};for(const h of Object.values(w.horses)){const x=structuredClone(h);x.id=remap(h.id);x.sire=remap(h.sire);x.dam=remap(h.dam);if(x.youngstock)x.youngstock.companions=x.youngstock.companions.map(remap);x.historyRecorded=roots.includes(h.id);horses[x.id]=x;}
   return {country,worldSeed,count,ids:roots.map(remap),horses};
 }
 export function prospectCards(catalog) {

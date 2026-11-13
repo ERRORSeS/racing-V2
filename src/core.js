@@ -1,3 +1,5 @@
+import { initializeForm } from './form.js';
+import { initializeYoungstock } from './youngstock.js';
 import { invalidateSchedule } from './reservations.js';
 import { publishEvent } from './media.js';
 import { initializeTraits } from './traits.js';
@@ -16,7 +18,7 @@ export function horse(w,owner,country,options={},depth=0,born=-720){
  w.horses[h.id]=h;invalidateSchedule(w);
  if(options.sireId||options.damId){h.sire=options.sireId||null;h.dam=options.damId||null;}else if(depth>0){const sire=horse(w,'archive',country,{sex:'colt'},depth-1,born-1800),dam=horse(w,'archive',country,{sex:'filly'},depth-1,born-2160);sire.status=dam.status='retired';h.sire=sire.id;h.dam=dam.id;
 }
- initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);
+ initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);
 
  return h;
 }

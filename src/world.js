@@ -1,3 +1,5 @@
+import { updateForm } from './form.js';
+import { youngstockDay, initializeYoungstock, createStartingPlan } from './youngstock.js';
 import { updateStudFees } from './stud.js';
 import { seedHistory } from './history.js';
 import { FIELD_DENSITY } from './race-rules.js';
@@ -54,6 +56,11 @@ export function createWorld(config) {
       h.coat.shade=opts.shade;h.coat.face=opts.face;h.coat.gray=opts.gray;h.coat.grayGene=h.coat.gray?'Gg':'gg';h.coat.tobiano=opts.tobiano;h.coat.tobianoGene=h.coat.tobiano?'Tt':'tt';
     }else h=horse(w,'player',config.country,opts,2);h.historyRecorded=true;if(opts.name&&opts.name!==h.name)rename(w,h.id,opts.name);event(w,'ownership',`${h.name} joins the stable as an unstarted two-year-old.`,h.id);
   }
+  if(config.starterEducation==='race_ready'&&!config.creativeMode)throw Error('Already race-ready starters require creative setup.');
+  for(const h of Object.values(w.horses).filter(h=>h.owner==='player')){
+   if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
+   if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
+  }
   upgrade(w);if(w.settings.historyYears>0)seedHistory(w,w.settings.historyYears);updateStudFees(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
 }
 import { cents } from './rules.js';
@@ -78,6 +85,8 @@ export function advanceWorld(w,days) {
   if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');upgrade(w);
   for(let i=0;i<days;i++){
     w.day++;
+    for(const c of w.coverings)foal(w,c);
+    for(const h of Object.values(w.horses)){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
     for(const h of Object.values(w.horses))dailyCare(w,h);
     seedReserves(w);planNpcEntries(w);
@@ -87,7 +96,6 @@ export function advanceWorld(w,days) {
     }
     for(const f of w.fixtures)if(f.day<=w.day&&f.status==='scheduled')resolveRace(w,f.id);
     for(const h of Object.values(w.horses))if(h.owner!=='archive')exposure(w,h,'turnout');
-    for(const c of w.coverings)foal(w,c);
     marketDay(w);
     if(w.day%30===0){
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);

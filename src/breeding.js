@@ -54,7 +54,7 @@ export function foal(w,c) {
   if(c.status!=='pregnant'||c.dueDay>w.day)return null;
   const dam=w.horses[c.damId],sire=w.horses[c.sireId];
   if(dam.status==='deceased'){c.status='lost';dam.pregnancy=null;return null;}
-  const h=horse(w,dam.owner,dam.location,{sex:pick(w,['filly','colt'])},0,w.day);
+  const h=horse(w,dam.owner,dam.location,{sex:pick(w,['filly','colt']),sireId:sire.id,damId:dam.id},0,w.day);
   h.sire=sire.id;h.dam=dam.id;h.breeder=c.breeder;h.historyRecorded=true;h.genome=inheritGenome(w,sire.genome,dam.genome);if(incompatibleGenotypes(h.genome))throw Error('Incompatible genotype was blocked by the breeding safeguards.');h.coat=coatFromGenome(h.genome);h.registryEligibility=c.registryEligibility;h.breedingMethod=c.method;h.skills=Object.fromEntries(SKILLS.map(k=>[k,5]));
   h.potential=geneticCeilings(h.genome);for(const key of SKILLS)h.skills[key]=Math.min(5,h.potential[key]*.25);h.originRules={coatMode:h.genome.modeAtBirth,registry:c.registryEligibility,creativeEdited:false};h.development.origin='geneticBirth';
   for(const k of Object.keys(h.conformation))h.conformation[k]=clamp(4.5+h.potential.balance/25+integer(w,-15,15)/10*(1-(traitModifiers(sire,{phase:'breeding'}).values.conformation||0)*5),1,10);

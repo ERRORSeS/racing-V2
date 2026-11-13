@@ -1,3 +1,7 @@
+# V4/V5 work in progress
+
+The next implementation increment adds youngstock care, growth, gradual weaning, formal starting and rotating meetings. See [the coverage and remaining-work map](docs/V4-V5-PROGRESS.md). This is not a completed V4/V5 release.
+
 # First Light — Thoroughbred Stable Manager
 
 A standalone, browser-local Thoroughbred stable management game. This branch adds the connected V3 simulation/guide update and a public GitHub Pages publishing workflow. It does not modify OXO or share its save namespace.
