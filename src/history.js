@@ -1,6 +1,6 @@
 import { validateCareerTimeline } from './career-timeline.js';
 import { RULES, COUNTRIES, age } from './rules.js';
-import { RACE_CLASSES, classLabel } from './race-rules.js';
+import { RACE_CLASSES, classLabel, conditionsFor } from './race-rules.js';
 import { seed, id } from './random.js';
 import { resolveRace } from './racing.js';
 import { evaluateLegacy } from './legacy.js';
@@ -14,10 +14,11 @@ export function seedHistory(w,years=10){
   const candidates=cohorts.filter(h=>h.country===country&&age(h,day)>=2&&age(h,day)<=8);
   if(candidates.length<2)continue;
   const c=RACE_CLASSES.find(c=>c.id===classes[Math.floor((day-currentDay+years*360)/45)%classes.length]);
-  const f={id:id(w,'historic-fixture'),seriesId:`history-${country}-${c.id}`,day,country,track:COUNTRIES[country].track,surface:COUNTRIES[country].surface,distance:1600,title:`${country} Heritage ${classLabel(c,country)}`,grade:classLabel(c,country),classId:c.id,raceType:c.type,tier:c.tier,blackType:!!c.blackType,historical:true,status:'scheduled',phase:'EntriesOpen',entries:[],minAge:2,maxAge:8,maxRunners:8,minStarters:2,targetFieldSize:8,conditions:{},purse:c.purse,fee:'0',going:'good',course:{turns:2,direction:'left',undulating:false},resultId:null};
+  const conditions={...conditionsFor(c),minAge:2,maxAge:8},eligible=candidates.filter(h=>conditions.maxWins==null||h.starts.filter(s=>s.place===1).length<=conditions.maxWins);if(eligible.length<2)continue;
+  const f={id:id(w,'historic-fixture'),seriesId:`history-${country}-${c.id}`,day,country,track:COUNTRIES[country].track,surface:COUNTRIES[country].surface,distance:1600,title:`${country} Heritage ${classLabel(c,country)}`,grade:classLabel(c,country),classId:c.id,raceType:c.type,tier:c.tier,blackType:!!c.blackType,historical:true,status:'scheduled',phase:'EntriesOpen',entries:[],minAge:2,maxAge:8,maxRunners:8,minStarters:2,targetFieldSize:8,conditions,purse:c.purse,fee:'0',going:'good',course:{turns:2,direction:'left',undulating:false},resultId:null};
   const j=w.jockeys.filter(j=>j.country===country);
   // Historical nominations are genuine participants known to have been alive and racing-age.
-  f.entries=candidates.slice().sort((a,b)=>c.tier>=5?b.potential.speed-a.potential.speed||a.starts.length-b.starts.length:a.starts.length-b.starts.length||a.id.localeCompare(b.id)).slice(0,8).map((h,i)=>({horseId:h.id,owner:h.owner,jockeyId:j[i%j.length].id,tactic:i%2?'stalk':'close',carriedWeight:56,gear:structuredClone(h.gear)}));
+  f.entries=eligible.slice().sort((a,b)=>c.tier>=5?b.potential.speed-a.potential.speed||a.starts.length-b.starts.length:a.starts.length-b.starts.length||a.id.localeCompare(b.id)).slice(0,8).map((h,i)=>({horseId:h.id,owner:h.owner,jockeyId:j[i%j.length].id,tactic:i%2?'stalk':'close',carriedWeight:56,gear:structuredClone(h.gear)}));
   w.fixtures.push(f);for(const e of f.entries){const h=w.horses[e.horseId];h.lastRaceDay=null;h.fatigue=0;h.soundness=100;}
   resolveRace(w,f.id);
  }}

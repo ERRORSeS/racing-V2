@@ -52,3 +52,9 @@ test('V6 168/180/182: day and month advancement preserve identical scheduled out
 test('Worker patches reconstruct the exact committed world while omitting unchanged race archives',()=>{
  const w=make(3),original=structuredClone(w),base=patchBase(w);w.settings.injuryFrequency=0;advanceWorld(w,2);const patch=worldPatch(w,base),merged=applyWorldPatch(original,patch);assert.deepEqual(merged,w);assert.ok(Object.keys(patch.results).length<Object.keys(w.results).length);assert.ok(Object.keys(patch.horses).length<Object.keys(w.horses).length);validate(merged);
 });
+
+test('Historical maidens and novice races obey earned win restrictions',()=>{
+ const w=make(10);for(const h of Object.values(w.horses))validateCareerTimeline(w,h);
+ const h=Object.values(w.horses).find(h=>h.starts.some(s=>s.place===1)&&h.starts.length>2),start=h.starts.at(-1),f=w.fixtures.find(f=>f.id===start.fixtureId),old=f.conditions;
+ f.conditions={...old,maxWins:0};assert.match(timelineIssue(w,h,start),/win restriction/);f.conditions=old;
+});

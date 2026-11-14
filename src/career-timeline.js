@@ -7,6 +7,11 @@ export function timelineIssue(w,h,start,fixtures=new Map(w.fixtures.map(f=>[f.id
  if(start.fixtureId!==f.id||start.day!==r.day||r.day!==f.day||r.day>w.day)return 'Inconsistent race date or identity';
  if(r.day-h.born<720||age(h,r.day)<f.minAge||age(h,r.day)>f.maxAge)return 'Ineligible age at race date';
  if(f.conditions?.sex&&f.conditions.sex!=='open'&&h.sex!==f.conditions.sex)return 'Ineligible sex restriction';
+ const prior=h.starts.filter(s=>s.day<r.day),wins=prior.filter(s=>s.place===1).length,conditions=f.conditions||{},maxWins=conditions.maxWins??(f.classId==='maiden'?0:null);
+ if(maxWins!=null&&wins>maxWins||conditions.minWins!=null&&wins<conditions.minWins)return 'Published win restriction not met at race date';
+ const rated=prior.filter(s=>s.performanceRating!=null).slice(-5),rating=rated.length>=3?Math.round(rated.reduce((n,s)=>n+s.performanceRating,0)/rated.length):null;
+ if(conditions.minRating!=null&&(rating==null||rating<conditions.minRating)||conditions.maxRating!=null&&rating!=null&&rating>conditions.maxRating)return 'Published rating restriction not met at race date';
+ if(conditions.bredIn&&h.country!==conditions.bredIn)return 'Birth-jurisdiction restriction not met';
  if(h.retiredDay!=null&&r.day>h.retiredDay)return 'Start after permanent racing retirement';
  if(h.deceasedDay!=null&&r.day>h.deceasedDay)return 'Start after death';
  if(start.classId!==f.classId||r.classId!==f.classId||start.grade!==f.grade||r.grade!==f.grade||start.tier!==(f.tier||0))return 'Career class disagrees with race';
@@ -29,7 +34,7 @@ export function repairCareerTimelines(w){
   for(const original of h.starts){
    const r=w.results[original.resultId],f=fixtures.get(r?.fixtureId),row=r?.rows.find(row=>row.horseId===h.id);
    const canonical=row&&f?{...original,resultId:r.id,fixtureId:f.id,day:r.day,title:r.title,track:r.track,country:r.country,distance:r.distance,surface:r.surface,going:r.going,grade:r.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,...row}:original;
-   const issue=seen.has(original.resultId)?'Duplicate career claim':timelineIssue(w,h,canonical,fixtures);
+   const issue=seen.has(original.resultId)?'Duplicate career claim':timelineIssue(w,{...h,starts:accepted},canonical,fixtures);
    if(issue){h.careerQuarantine??=[];h.careerQuarantine.push({original,reason:issue,reviewDay:w.day});w.careerAudit.push({horseId:h.id,resultId:original.resultId,reason:issue,day:w.day});repaired++;continue;}
    if(JSON.stringify(original)!==JSON.stringify(canonical)){h.careerCorrections??=[];h.careerCorrections.push({original,reason:'Normalized to canonical completed result',reviewDay:w.day});repaired++;}
    accepted.push(canonical);seen.add(original.resultId);
