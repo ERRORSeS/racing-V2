@@ -1,3 +1,4 @@
+import { npcConsignmentAllowed } from './catalog-policy.js';
 import { rotateAuctions } from './auction-catalog.js';
 import { autoRegister } from './auto-register.js';
 import { updateForm } from './form.js';
@@ -64,7 +65,7 @@ export function createWorld(config) {
    if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
    if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
   }
-  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
+  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');w.careerTimelineVersion=1;return w;
 }
 import { cents } from './rules.js';
 function setInitialBalance(w,balance){w.balance=cents(balance);}
@@ -80,8 +81,8 @@ function npcMonth(w) {
     for(const h of horses)if(h.status==='active'&&age(h,w.day)>=9){h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;event(w,'life',`${h.name} retired by ${o.name}.`,h.id);}
     if(w.day%360===30){const dam=horses.find(h=>h.brood&&h.sex==='filly'&&!h.pregnancy&&h.postFoalingUntil<=w.day&&age(h,w.day)<19);const sires=Object.values(w.horses).filter(h=>h.brood&&h.sex==='colt'&&h.status==='retired'&&h.location===dam?.location&&!h.medicalCase&&h.soundness>=65&&age(h,w.day)<23);if(dam&&sires.length){try{cover(w,dam.id,pick(w,sires).id,'natural',null,true);}catch{/* Incompatible pairs remain unbred. */}}}
     if(w.day%360===0){const active=horses.filter(h=>h.status==='active').length;if(active<6){const h=horse(w,owner,o.country,{},1,w.day-720);h.autoTrain=true;h.historyRecorded=true;upgrade(w);event(w,'world',`${o.name} introduces new prospect ${h.name}.`,h.id);}}
-    if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&!w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed)&&!w.fixtures.some(f=>f.status==='scheduled'&&f.entries.some(e=>e.horseId===h.id)));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
-    for(const h of horses)if(age(h,w.day)>28&&w.settings.fatalities&&random(w)<.01){h.status='deceased';h.brood=false;event(w,'life',`${h.name} died in retirement. Their permanent records remain available.`,h.id);}
+    if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&npcConsignmentAllowed(w,h)&&!w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed)&&!w.fixtures.some(f=>f.status==='scheduled'&&f.entries.some(e=>e.horseId===h.id)));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
+    for(const h of horses)if(age(h,w.day)>28&&w.settings.fatalities&&random(w)<.01){h.status='deceased';h.deceasedDay=w.day;h.brood=false;event(w,'life',`${h.name} died in retirement. Their permanent records remain available.`,h.id);}
   }
 }
 export function advanceWorld(w,days) {

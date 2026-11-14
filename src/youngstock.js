@@ -1,3 +1,4 @@
+import { changeFatigue } from './fatigue.js';
 import { seed } from './random.js';
 import { age, clamp } from './rules.js';
 import { event, charge, ownedHorse } from './core.js';
@@ -84,7 +85,7 @@ export function startingSession(w,h){
  const required=(p.pace==='Balanced'?2:3)+(p.step===6&&h.spookiness>65?2:0)+(p.step===1&&y.skills.cooperation<30?1:0);
  const passed=m.attempts>=required;
  if(passed){m.status='passed';m.passedDay=w.day;p.step++;if(p.step===1||p.step===10)w.visits.push({id:`starting-review-${h.id}-${p.step}`,horseId:h.id,day:w.day,type:'vet',action:'development review',report:p.step===1?'Starting readiness: chronological age, health and soundness reviewed; supervised education cleared.':'Starting final review: all ten education checkpoints passed; appropriate maiden entry may be considered.'});event(w,'development',`${h.name} passed ${m.name}.`,h.id);}else m.status='needs_more_work';
- h.fatigue=clamp(h.fatigue+5);y.skills.cooperation=clamp(y.skills.cooperation+.7);y.lastSessionDay=h.lastTrainingDay=w.day;
+ changeFatigue(w,h,{load:5,source:'Starting program'});y.skills.cooperation=clamp(y.skills.cooperation+.7);y.lastSessionDay=h.lastTrainingDay=w.day;
  const report=`${m.name}: ${passed?'passed':'needs another calm session'} (${m.attempts}/${required} observations).`;
  p.log.push({day:w.day,checkpoint:m.name,attempt:m.attempts,passed,report,staff:p.trainerId});
  w.sessions.push({id:`starting-${h.id}-${w.day}`,horseId:h.id,day:w.day,activity:'Starting: '+m.name,skill:'cooperation',gain:.7,changes:[],fatigue:h.fatigue,report});
@@ -101,7 +102,7 @@ export function educationSession(w,h,code=null){
  const [key,a]=chosen;charge(w,h,'500','Youngstock education',h.id);
  const gain=.6+h.temperament/200+(100-h.spookiness)/300;
  for(const k of a.skills)y.skills[k]=clamp(y.skills[k]+gain);
- h.fatigue=clamp(h.fatigue+a.effort);y.lastSessionDay=h.lastTrainingDay=w.day;
+ changeFatigue(w,h,{load:a.effort,source:'Youngstock education'});y.lastSessionDay=h.lastTrainingDay=w.day;
  const record={day:w.day,activity:key,staff:'Stable education staff',skills:a.skills,gain,report:`${a.label}: ${a.skills.join(', ')} +${gain.toFixed(2)}. No racing skill or genetic ceiling changed.`};
  y.education.push(record);w.sessions.push({id:`education-${h.id}-${w.day}`,horseId:h.id,day:w.day,activity:a.label,skill:a.skills[0],gain,changes:[],fatigue:h.fatigue,report:record.report});return true;
 }

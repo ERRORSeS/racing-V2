@@ -1,3 +1,4 @@
+import { validateCareerTimeline } from './career-timeline.js';
 import { childrenOf } from './family-index.js';
 import { appraisal } from './valuation.js';
 import { attachAuction } from './auction-catalog.js';
@@ -28,7 +29,7 @@ export function buy(w,listingId) {
   const l=w.listings.find(x=>x.id===listingId);if(!l||l.sold||l.closed||l.kind==='auction')throw Error('Private listing unavailable.');transfer(w,l,'player',l.price);
 }
 export function listHorse(w,horseId,value,kind='private') {
-  const h=ownedHorse(w,horseId),blocker=saleBlocker(w,h);if(blocker)throw Error(blocker);if(w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed))throw Error('Horse is already listed.');if(w.fixtures.some(f=>f.status==='scheduled'&&f.entries?.some(e=>e.horseId===h.id)))throw Error('Scratch race entries before listing.');
+  const h=ownedHorse(w,horseId);validateCareerTimeline(w,h);const blocker=saleBlocker(w,h);if(blocker)throw Error(blocker);if(w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed))throw Error('Horse is already listed.');if(w.fixtures.some(f=>f.status==='scheduled'&&f.entries?.some(e=>e.horseId===h.id)))throw Error('Scratch race entries before listing.');
   const price=cents(value);if(BigInt(price)<=0n)throw Error('Price must be greater than zero.');if(!['private','auction'].includes(kind))throw Error('Choose private sale or auction.');
   const l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind,sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],disclosure:h.medicalCase?`Active ${w.medical.find(m=>m.id===h.medicalCase)?.diagnosis}; ${h.clearance}`:`${h.clearance}; soundness ${h.soundness.toFixed(1)}`};w.listings.push(l);attachAuction(w,l);event(w,'market',`${h.name} listed for ${kind} sale with medical disclosures.`,h.id);return l;
 }

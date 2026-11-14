@@ -1,3 +1,7 @@
+# V6 release-priority repairs
+
+Verified sale careers and legacy record review, queued time skips with browsing available, revision-checked incremental autosave, and individual fatigue/intensity controls. See [V6 implementation, acceptance evidence and remaining scope](docs/V6-RELEASE-STATUS.md).
+
 # Current management update
 
 New race-level guidance, selective news, injury decisions, per-horse registration, stronger monthly training, category-based auction events, simulated founder careers and background saving. See [the feature/compatibility report](docs/MANAGEMENT-UPDATE.md) and [race-level guide](docs/RACE-LEVEL-GUIDE.md).

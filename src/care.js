@@ -1,3 +1,4 @@
+import { changeFatigue } from './fatigue.js';
 import { useRacingYears, racingYearsRisk } from './racing-years.js';
 import { INJURY_TYPES, chooseInjury } from './injuries.js';
 import { chronologicalDays, educationSession, startingSession, createStartingPlan, startingBlocker } from './youngstock.js';
@@ -43,7 +44,7 @@ export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain',contex
   useRacingYears(w,h,{Easy:.05,Medium:.15,'More Than Medium':.35,Severe:1,'Very Severe':2.5}[severity]);w.medical.push(m);h.medicalCase=m.id;h.clearance='No Work';h.soundness=Math.min(h.soundness,severity==='Easy'?75:severity==='Medium'?65:45);h.turnout=Math.min(2,h.turnout);h.exposureDay=w.day;
   h.irreversibleSoundnessLimit=Math.min(h.irreversibleSoundnessLimit??100,m.ceiling);h.potentialSoundnessCeiling=Math.min(h.potentialSoundnessCeiling??100,severity==='Severe'?82:severity==='Very Severe'?65:100);h.soundnessHistory.push({day:w.day,current:h.soundness,ceiling:h.potentialSoundnessCeiling,structuralLimit:h.irreversibleSoundnessLimit,reason:diagnosis});
   scratchEntries(w,h,'veterinary restriction');event(w,'medical',`${h.name}: ${diagnosis}, ${severity}. Recovery estimate ${min}–${max} days; veterinary clearance required.`,h.id);
-  if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<(INJURY_TYPES[typeId]?.fatalRisk??.015)){h.status='deceased';h.clearance='No Work';m.status='closed';m.outcome='Fatal complication';h.medicalCase=null;h.brood=false;h.autoTrain=false;h.autoRace=false;h.autoRaceStatus='Deceased; registration off.';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
+  if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<(INJURY_TYPES[typeId]?.fatalRisk??.015)){h.status='deceased';h.deceasedDay=w.day;h.clearance='No Work';m.status='closed';m.outcome='Fatal complication';h.medicalCase=null;h.brood=false;h.autoTrain=false;h.autoRace=false;h.autoRaceStatus='Deceased; registration off.';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
   return m;
 }
 export function vet(w,horseId,action='examine') {
@@ -115,8 +116,8 @@ export function train(w,h,manual=false,activity=null) {
   h.development.lastProgress[key]=w.day;h.workoutCounts[key]=(h.workoutCounts[key]||0)+1;
   if(headroom<.5)h.development.plateaus[key]=(h.development.plateaus[key]||0)+1;
  }
- h.workoutCounts[workout]=(h.workoutCounts[workout]||0)+1;h.fatigue=clamp(h.fatigue+plan.fatigue*(young?.5:1));h.fitness=clamp(h.fitness+(restricted?.015:workout==='Rest'?-.03:.3));
- if(!restricted&&!young&&plan.fatigue>0)useRacingYears(w,h,plan.fatigue/13/360);h.lastTrainingDay=w.day;const primary=changes[0]||{skill:'handling',gain:0};
+ h.workoutCounts[workout]=(h.workoutCounts[workout]||0)+1;changeFatigue(w,h,{load:plan.fatigue*(young?.5:1)*(h.trainingIntensity==='Intense'?1.7:1),source:workout});h.fitness=clamp(h.fitness+(restricted?.015:workout==='Rest'?-.03:.3));
+ if(!restricted&&!young&&plan.fatigue>0)useRacingYears(w,h,plan.fatigue*(h.trainingIntensity==='Intense'?1.7:1)/13/360);h.lastTrainingDay=w.day;const primary=changes[0]||{skill:'handling',gain:0};
  const session={id:id(w,'session'),horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes,fatigue:h.fatigue,appliedTraits:modifiers.applied,report:changes.length?changes.map(c=>`${SKILL_DEFINITIONS[c.skill].label} ${c.gain>0?'+':''}${c.gain.toFixed(3)} (${c.status})`).join('; '):'Appropriate light maintenance; no competitive skill gain.'};
  if(h.owner==='player'||w.settings.debug)w.sessions.push(session);else w.sessions.push({id:session.id,horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes:changes.map(c=>[c.skill,c.before,c.after,c.usableCeiling,c.status]),fatigue:h.fatigue});if(workout==='Gate schooling')observeTrait(w,h,'gate',session.id);if(workout==='Travel practice')observeTrait(w,h,'travel',session.id);if(!restricted)exposure(w,h,'training');return true;
 }
@@ -124,7 +125,7 @@ export function dailyCare(w,h) {
   if(h.status==='deceased'||h.owner==='archive')return;
   recoveryDay(w,h);
   if(age(h,w.day)>12)h.fitness=clamp(h.fitness-.01*(age(h,w.day)-12));
-  h.fatigue=clamp(h.fatigue-(RULES.restRecovery*(.8+h.skills.recovery/250)*(1+(traitModifiers(h,{phase:'care'}).values.recovery||0))));
+  changeFatigue(w,h,{recovery:RULES.restRecovery*(.8+h.skills.recovery/250)*(1+(traitModifiers(h,{phase:'care'}).values.recovery||0))+(h.breakPlan&&h.breakPlan.stage!=='Complete'?1:0),source:'Daily recovery'});
   const warnings=feedWarnings(h,w.day);h.acuteStress=warnings.length>=2?'Care incompatibility':h.fatigue>70?'Excessive workload':null;
   h.condition=clamp(h.condition+(traitModifiers(h,{phase:'care'}).values.condition||0)*.05+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
   if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(traitModifiers(h,{phase:'care'}).values.hoof||0)*3));
@@ -149,10 +150,11 @@ export function dailyCare(w,h) {
 }
 export function scheduledTraining(w,h) {
   if(!h.autoTrain&&!(h.youngstock?.autoEducation&&chronologicalDays(h,w.day)<720))return 'Off';
+  if(h.trainingIntensity==='Rest')return 'Rest intensity; automatic training off';
   if(h.lastTrainingDay===w.day)return 'Already completed today';
   if(w.day%4===0)return 'Scheduled rest day';
   if(h.clearance==='No Work')return 'Paused for veterinary restriction';
-  return train(w,h)?'Completed today':'Paused for fatigue, travel, age or race preparation';
+  return train(w,h,false,h.trainingIntensity==='Light'||h.protectRecovery!==false&&h.fatigue>(h.recoveryFatigueThreshold??35)?'Light exercise':null)?'Completed today':'Paused for fatigue, travel, age or race preparation';
 }
 
 // Read-only explanation shared by the daily table and automation.

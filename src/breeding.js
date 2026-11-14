@@ -1,3 +1,4 @@
+import { validateCareerTimeline } from './career-timeline.js';
 import { inheritGenome, geneticCeilings, coatFromGenome, legacyGenome, matingGeneticRisk, incompatibleGenotypes } from './genetics.js';
 import { distanceFromGenome } from './development.js';
 import { traitModifiers } from './traits.js';
@@ -13,7 +14,7 @@ export function inheritedCoat(w,sire,dam) {
  for(const [g,h]of [[sg,sire],[dg,dam]]){g.loci.MC1R.alleles=h.coat.extension.split('');g.loci.ASIP.alleles=h.coat.agouti.split('');g.loci.GRAY.alleles=(h.coat.grayGene||(h.coat.gray?'Gg':'gg')).split('');g.loci.TOBIANO.alleles=(h.coat.tobianoGene||'tt').split('');}
  return coatFromGenome(inheritGenome(w,sg,dg));
 }
-export function studBook(w,sire){const year=Math.floor(w.day/360)+1;let book=w.studBooks.find(b=>b.sireId===sire.id&&b.year===year);if(!book){book={id:id(w,'book'),sireId:sire.id,year,capacity:60,reservations:[],advertisedFee:sire.studFee};w.studBooks.push(book);}return book;}
+export function studBook(w,sire){validateCareerTimeline(w,sire);const year=Math.floor(w.day/360)+1;let book=w.studBooks.find(b=>b.sireId===sire.id&&b.year===year);if(!book){book={id:id(w,'book'),sireId:sire.id,year,capacity:60,reservations:[],advertisedFee:sire.studFee};w.studBooks.push(book);}return book;}
 export function breedingReason(w,dam,sire) {
   if(!dam||!sire)return 'Choose a mare and stallion.';
   if(dam.sex!=='filly'||sire.sex!=='colt')return 'A mare must be the dam and a stallion the sire.';
