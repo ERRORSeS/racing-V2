@@ -1,0 +1,11 @@
+# Large autosave recovery
+
+`RangeError: Invalid string length` can occur when a whole career or migration snapshot is passed to `JSON.stringify`. A career assembled from previously saved base/delta chunks can exceed that single-string limit even though its stored chunks remain valid. The old save implementation prepared that string before opening the write transaction, so that failure did not itself delete the current save or backup.
+
+Autosaves now serialize individual records into bounded batches, compress and checksum those parts, then atomically commit the manifest. Both full migration snapshots and incremental saves use this path. Loading still accepts prior base/patch manifests and native/packed snapshots. Completed races, all horse identities, histories, money and active medical restrictions remain part of the save. Existing current data stays in the backup when the recovered checkpoint commits. Missing or corrupt parts cause an error rather than silently dropping horses.
+
+Export Career now writes a streaming-compatible `.jsonl` portable backup. The importer reads those records progressively; older `.json` career files remain supported. This avoids recreating the giant-string error while exporting the recovered stable. Restore Previous Autosave writes a complete replacement checkpoint through the worker; it no longer merges future append-only race history into an older checkpoint or fails solely because the backup revision is older.
+
+After deployment, reload the same site in the same browser/profile. Let the existing autosave load; use Restore Previous Autosave if needed, then export a backup after the stable appears. Do not clear site data or start a replacement career to fix this error. Saves are local to the player's browser; the development workspace cannot access or certify the contents of that private database directly.
+
+Verification: bounded serialization/delta/portable roundtrips and corrupt/missing-part tests; exact stress-fracture report at 45.6 soundness / No Work / follow-up day 781; old-format migration with 201 owned horses (1,569 total), simulated whole-world string failure, retained original backup and portable recovery; prior browser checks for queued skips, CAS conflicts, interrupted-skip checkpoints and legacy preservation of genotype, races, paid prices and ownership.

@@ -3,7 +3,7 @@ import { patchBase, worldPatch } from './world-patch.js';
 import { recruitAccomplishedSires, updateStudFees } from './stud.js';
 import { seedPedigreeCareers } from './history.js';
 import { advanceWorld, createWorld } from './world.js';
-import { saveCareer, loadCareer, decode } from './storage.js';
+import { saveCareer, loadCareer, decode, importCareerFile } from './storage.js';
 let residentWorld=null;
 export async function runBackgroundJob(data,send,{cooperative=false}={}){
  let checkpointWritten=false,base=null;
@@ -18,8 +18,8 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    residentWorld=world;send({requestId:data.requestId,world});return;
   }
   if(data.type==='save'){const revision=await saveCareer(data.world);residentWorld=data.world;send({requestId:data.requestId,saved:true,revision});return;}
-  const world=data.type==='create'?createWorld(data.config):data.type==='import'?decode(data.text):data.world||residentWorld;
-  if(data.type==='import')ensureCalendarHorizon(world);
+  const world=data.type==='create'?createWorld(data.config):data.type==='import'?(data.file?await importCareerFile(data.file):decode(data.text)):data.world||residentWorld;
+  if(data.type==='import'||data.type==='restore')ensureCalendarHorizon(world);
   if(data.type==='import'&&!world.pedigreeHistoryVersion&&world.settings.historyYears>0)seedPedigreeCareers(world);
   if(data.type==='advance'||!data.type){
    if(world)base=patchBase(world);
@@ -33,7 +33,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
     send({requestId:data.requestId,progress:{done,total:data.days,day:world.day}});
     if(cooperative)await yieldTask();
    }
-  }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'});
+  }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'||data.type==='restore'});
   residentWorld=world;send(base?{requestId:data.requestId,patch:worldPatch(world,base),saved:true}:{requestId:data.requestId,world,saved:true});
  }catch(error){let committed=null;if(checkpointWritten){try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed;send({requestId:data.requestId,error:error.message,committed});}
 }
