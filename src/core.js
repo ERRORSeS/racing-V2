@@ -1,3 +1,5 @@
+import { initializeDurability } from './durability.js';
+import { initializeAppraisal } from './valuation.js';
 import { initializeRacingYears } from './racing-years.js';
 import { invalidateFamily } from './family-index.js';
 import { initializeForm } from './form.js';
@@ -20,7 +22,7 @@ export function horse(w,owner,country,options={},depth=0,born=-720){
  w.horses[h.id]=h;invalidateSchedule(w);invalidateFamily(w);
  if(options.sireId||options.damId){h.sire=options.sireId||null;h.dam=options.damId||null;}else if(depth>0){const sire=horse(w,'archive',country,{sex:'colt'},depth-1,born-1800),dam=horse(w,'archive',country,{sex:'filly'},depth-1,born-2160);sire.status=dam.status='retired';h.sire=sire.id;h.dam=dam.id;
 }
- initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);initializeRacingYears(w,h);
+ initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);initializeRacingYears(w,h);initializeDurability(w,h).historyInitialized=true;h.safeRacingYears=Math.min(h.safeRacingYears,h.racingDurability.individualRacingLongevity,5);initializeAppraisal(w,h);
 
  invalidateFamily(w);return h;
 }

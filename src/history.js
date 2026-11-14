@@ -1,3 +1,5 @@
+import { initializeAppraisal } from './valuation.js';
+import { racingWindowReason } from './durability.js';
 import { validateCareerTimeline } from './career-timeline.js';
 import { RULES, COUNTRIES, age } from './rules.js';
 import { RACE_CLASSES, classLabel, conditionsFor } from './race-rules.js';
@@ -11,7 +13,7 @@ export function seedHistory(w,years=10){
  for(const h of cohorts){h.status='active';h.arrivalDay=currentDay-years*360-1;h.postFoalingUntil=currentDay-years*360-1;h.fitness=85;for(const key of Object.keys(h.skills))h.skills[key]=Math.min(h.potential[key],Math.max(h.skills[key],h.potential[key]*.86));}
  const classes=['maiden','allowance','open','listed','g3','g2','g1'];
  for(let day=currentDay-years*360;day<currentDay-30;day+=45){w.day=day;for(const country of Object.keys(COUNTRIES)){
-  const candidates=cohorts.filter(h=>h.country===country&&age(h,day)>=2&&age(h,day)<=8);
+  const candidates=cohorts.filter(h=>h.country===country&&age(h,day)>=2&&age(h,day)<=8&&!racingWindowReason(w,h,day));
   if(candidates.length<2)continue;
   const c=RACE_CLASSES.find(c=>c.id===classes[Math.floor((day-currentDay+years*360)/45)%classes.length]);
   const conditions={...conditionsFor(c),minAge:2,maxAge:8},eligible=candidates.filter(h=>conditions.maxWins==null||h.starts.filter(s=>s.place===1).length<=conditions.maxWins);if(eligible.length<2)continue;
@@ -39,7 +41,7 @@ export function seedPedigreeCareers(w){
   for(let leg=0;leg<3;leg++){w.day=firstDay+leg*21;const c=RACE_CLASSES.find(c=>c.id===['maiden','allowance','open'][leg]),country=runners[0].country,fixtureId=id(w,'founder-fixture'),jockeys=w.jockeys.filter(j=>j.country===country);const f={id:fixtureId,seriesId:'founder-career-archive',day:w.day,country,track:COUNTRIES[country].track,surface:COUNTRIES[country].surface,distance:1600,title:`Founder Career ${classLabel(c,country)}`,grade:classLabel(c,country),classId:c.id,raceType:c.type,tier:c.tier,blackType:false,historical:true,founderArchive:true,provenance:'Shared founder career simulated when filling an unrecorded pedigree; not imported real-world history',status:'scheduled',phase:'EntriesOpen',entries:runners.map((h,i)=>({horseId:h.id,owner:h.owner,jockeyId:jockeys[i].id,tactic:'stalk',carriedWeight:56,gear:structuredClone(h.gear)})),minAge:2,maxAge:6,maxRunners:8,minStarters:2,targetFieldSize:runners.length,conditions:{},purse:c.purse,fee:'0',going:'good',course:{direction:'left',turns:2},resultId:null};w.fixtures.push(f);for(const h of runners)h.fatigue=0;resolveRace(w,f.id);}
   for(const {h,state}of saved){Object.assign(h,state);h.historyRecorded=true;h.founderHistoryAssessed=true;h.founderHistoryProvenance='Three shared simulated founder fixtures; results and winnings are linked, current skills and money preserved.';}
  }
- w.day=currentDay;w.rng=currentRng;w.settings.injuryFrequency=frequency;for(const h of founders)validateCareerTimeline(w,h);w.pedigreeHistoryVersion=1;
+ w.day=currentDay;w.rng=currentRng;w.settings.injuryFrequency=frequency;for(const h of founders){validateCareerTimeline(w,h);initializeAppraisal(w,h,{fresh:true});}w.pedigreeHistoryVersion=1;
 }
 import { horse as generateFounder } from './core.js';
 function founderRival(w,h){const rival=generateFounder(w,'archive',h.country,{},0,h.born);rival.status='retired';return rival;}

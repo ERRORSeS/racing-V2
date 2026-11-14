@@ -1,3 +1,5 @@
+import { recordRetirement } from './durability.js';
+import { refreshMaterialValue } from './valuation.js';
 import { event, scratchEntries } from './core.js';
 import { career } from './career.js';
 import { age } from './rules.js';
@@ -19,8 +21,8 @@ export function recruitAccomplishedSires(w){
   const h=horses.filter(h=>h.owner!=='archive'&&h.owner!=='player'&&h.country===country&&h.status==='active'&&h.sex==='colt'&&age(h,w.day)>=4&&age(h,w.day)<=12&&!h.medicalCase&&h.soundness>=65&&career(h).stakesWins>0)
    .sort((a,b)=>career(b).stakesWins-career(a).stakesWins||Number(BigInt(career(b).earnings)-BigInt(career(a).earnings)))[0];
   if(!h)continue;
-  h.status='retired';h.brood=true;h.retiredDay=w.day;h.studSince=w.day;h.autoTrain=false;h.autoRace=false;
-  scratchEntries(w,h,'retired to stud');
+  recordRetirement(w,h,'Owner Chose Retirement · Retired to Stud');h.status='retired';h.brood=true;h.retiredDay=w.day;h.studSince=w.day;h.autoTrain=false;h.autoRace=false;
+  scratchEntries(w,h,'retired to stud');refreshMaterialValue(w,h);
   event(w,'life',`${h.name} retires to stud at ${w.owners[h.owner].name} with ${career(h).record} and ${career(h).stakesWins} stakes wins.`,h.id);
  }
 }

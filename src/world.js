@@ -1,3 +1,6 @@
+import { recordRetirement } from './durability.js';
+import { refreshMaterialValue } from './valuation.js';
+import { initializeV7World, monthlyV7Review } from './v7.js';
 import { npcConsignmentAllowed } from './catalog-policy.js';
 import { rotateAuctions } from './auction-catalog.js';
 import { autoRegister } from './auto-register.js';
@@ -27,7 +30,7 @@ export function createWorld(config) {
   if(!COUNTRIES[config.country])throw Error('Choose a supported country.');if(!config.starters?.length)throw Error('Add at least one starter.');
   const w={schema:1,seed:config.seed||'first-light',rng:seed(config.seed||'first-light'),sequence:0,day:0,ownerName:config.owner||'Owner',stableName:config.stable||'First Light Racing',country:config.country,unlimited:config.unlimited??true,balance:'0',horses:{},owners:{player:{name:config.stable||'First Light Racing',country:config.country},archive:{name:'Historical breeding archive',country:config.country}},events:[],ledger:[],listings:[],fixtures:[],sessions:[]};
   // Exact money parser and additive defaults are shared with save migration.
-  upgrade(w);w.settings.fatalities=config.fatalities??true;w.settings.expandedGenetics=!!config.expandedGenetics;w.settings.fieldDensity=config.fieldDensity||'Balanced';w.settings.historyYears=config.historyYears??10;w.settings.instantTravel=config.instantTravel??false;w.settings.creativeMode=!!config.creativeMode;w.settings.revealPotential=!!config.revealPotential;
+  upgrade(w);w.settings.fatalities=config.fatalities??true;if(config.maximumRacingCareerYears!=null){if(!Number.isInteger(config.maximumRacingCareerYears)||config.maximumRacingCareerYears<1||config.maximumRacingCareerYears>5)throw Error('Career limit must be 1–5 years.');w.settings.maximumRacingCareerYears=config.maximumRacingCareerYears;}w.settings.expandedGenetics=!!config.expandedGenetics;w.settings.fieldDensity=config.fieldDensity||'Balanced';w.settings.historyYears=config.historyYears??10;w.settings.instantTravel=config.instantTravel??false;w.settings.creativeMode=!!config.creativeMode;w.settings.revealPotential=!!config.revealPotential;
   const catalog=config.catalog?prepareStarters(config.catalog):null;
   const prepared=new Map();
   if(catalog)for(const opts of config.starters.filter(o=>o.catalogId)){
@@ -65,7 +68,7 @@ export function createWorld(config) {
    if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
    if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
   }
-  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');w.careerTimelineVersion=1;return w;
+  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');w.careerTimelineVersion=1;initializeV7World(w,{fresh:true});return w;
 }
 import { cents } from './rules.js';
 function setInitialBalance(w,balance){w.balance=cents(balance);}
@@ -78,7 +81,7 @@ function npcMonth(w) {
   const stables=Object.entries(w.owners).filter(([key])=>!['player','archive'].includes(key));
   for(const [owner,o] of stables){
     const horses=Object.values(w.horses).filter(h=>h.owner===owner&&h.status!=='deceased');
-    for(const h of horses)if(h.status==='active'&&age(h,w.day)>=9){h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;event(w,'life',`${h.name} retired by ${o.name}.`,h.id);}
+    for(const h of horses)if(h.status==='active'&&age(h,w.day)>=9){recordRetirement(w,h,'Owner Chose Retirement');h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;event(w,'life',`${h.name} retired by ${o.name}.`,h.id);}
     if(w.day%360===30){const dam=horses.find(h=>h.brood&&h.sex==='filly'&&!h.pregnancy&&h.postFoalingUntil<=w.day&&age(h,w.day)<19);const sires=Object.values(w.horses).filter(h=>h.brood&&h.sex==='colt'&&h.status==='retired'&&h.location===dam?.location&&!h.medicalCase&&h.soundness>=65&&age(h,w.day)<23);if(dam&&sires.length){try{cover(w,dam.id,pick(w,sires).id,'natural',null,true);}catch{/* Incompatible pairs remain unbred. */}}}
     if(w.day%360===0){const active=horses.filter(h=>h.status==='active').length;if(active<6){const h=horse(w,owner,o.country,{},1,w.day-720);h.autoTrain=true;h.historyRecorded=true;upgrade(w);event(w,'world',`${o.name} introduces new prospect ${h.name}.`,h.id);}}
     if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&npcConsignmentAllowed(w,h)&&!w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed)&&!w.fixtures.some(f=>f.status==='scheduled'&&f.entries.some(e=>e.horseId===h.id)));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
@@ -102,9 +105,10 @@ export function advanceWorld(w,days) {
     for(const h of Object.values(w.horses))if(h.owner!=='archive')exposure(w,h,'turnout');
     marketDay(w);
     if(w.day%30===0){
+      for(const h of Object.values(w.horses))monthlyV7Review(w,h);
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);
       for(const s of w.staff)if(s.owner==='player'){try{transact(w,-BigInt(s.wage),'Staff wages',s.id);}catch{event(w,'staff',`Wage unpaid for ${s.name}; service suspended.`);s.owner='unpaid';}}
-      npcMonth(w);rotateAuctions(w);recruitAccomplishedSires(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
+      npcMonth(w);for(const h of Object.values(w.horses))if(h.owner!=='archive')refreshMaterialValue(w,h);rotateAuctions(w);recruitAccomplishedSires(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
 
     }
   }

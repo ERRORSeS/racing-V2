@@ -1,3 +1,5 @@
+import { racingWindowReason } from './durability.js';
+import { settleV7Race } from './v7.js';
 import { changeFatigue } from './fatigue.js';
 import { useRacingYears } from './racing-years.js';
 import { ensureJockeys, addCircuitReserves } from './circuit-reserves.js';
@@ -22,6 +24,7 @@ export function eligibility(w,h,f,options={}) {
   if(!h||!f)return 'Choose a horse and fixture.';
   if(f.status!=='scheduled'||f.day<w.day)return 'This race is closed.';
   const educationReason=raceEducationBlocker(w,h,f);if(educationReason)return educationReason;
+  const windowReason=racingWindowReason(w,h,f.day);if(windowReason)return windowReason;
   if(h.status!=='active')return 'This horse is permanently retired or deceased.';
   if(h.medicalCase||h.clearance!=='Race-Cleared'||h.soundness<RULES.minRaceSoundness)return 'Veterinary clearance required.';
   if(h.hoofHealth<65)return 'Hoof care is required before entry.';
@@ -37,7 +40,9 @@ export function eligibility(w,h,f,options={}) {
   if(conditions.sex&&conditions.sex!=='open'&&h.sex!==conditions.sex)return 'Sex-restricted race.';
   const wins=career(h).wins,rating=observedRating(h);
   if(conditions.maxWins!=null&&wins>conditions.maxWins)return 'Win restriction exceeded.';
-  if(conditions.minWins!=null&&wins<conditions.minWins)return 'Published minimum wins not met.';
+  const maiden=f.classId==='maiden'||f.grade==='Maiden',minimum=conditions.minPlacings??(!maiden?conditions.minWins:null),top3=career(h).wins+career(h).seconds+career(h).thirds;
+  if(minimum!=null&&top3<minimum)return `Published minimum ${minimum} top-three finishes not met.`;
+  if(maiden&&conditions.minWins!=null&&wins<conditions.minWins)return 'Published minimum wins not met.';
   if(conditions.minRating!=null&&(rating==null||rating<conditions.minRating))return 'Official handicap rating below range or not established.';
   if(conditions.maxRating!=null&&rating!=null&&rating>conditions.maxRating)return 'Official handicap rating above range.';
   if(conditions.bredIn&&h.country!==conditions.bredIn)return 'Birth-jurisdiction restriction.';
@@ -158,7 +163,7 @@ export function resolveRace(w,fixtureId) {
     const j=w.jockeys.find(x=>x.id===row.jockeyId);j.starts++;if(row.place===1)j.wins++;
     event(w,'racing',`${h.name}: ${row.place??'Pulled up'}/${rows.length} in ${f.title}, ${f.distance}m ${f.surface}.`,h.id);
   }
-  commitQualification(w,result,f);updateRecords(w,result);publishRace(w,result);return result;
+  commitQualification(w,result,f);updateRecords(w,result);publishRace(w,result);settleV7Race(w,result);return result;
 }
 
 export function fieldHealth(w,f){

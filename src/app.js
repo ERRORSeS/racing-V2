@@ -1,3 +1,5 @@
+import { editDurability, initializeDurability, completeRacingCareer } from './durability.js';
+import { refreshMaterialValue } from './valuation.js';
 import { applyWorldPatch } from './world-patch.js';
 import { createAdvanceQueue } from './advance-queue.js';
 import { actionSnapshot } from './action-snapshot.js';
@@ -141,6 +143,7 @@ app.addEventListener('submit',async e=>{
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
   if(advancing){notice='Time is advancing; changes resume after queued skips finish.';render();return;}
   const actions={
+    'durability-creative':n=>editDurability(n,ownedHorse(n,id),{score:Number(f.get('score')),years:Number(f.get('years'))}),
     intensity:n=>{const h=ownedHorse(n,id),intensity=f.get('intensity');if(!['Rest','Light','Balanced','Intense'].includes(intensity))throw Error('Choose a training intensity.');const threshold=Number(f.get('recoveryFatigueThreshold'));if(!Number.isFinite(threshold)||threshold<10||threshold>70)throw Error('Choose a recovery threshold from 10 to 70.');h.trainingIntensity=intensity;h.protectRecovery=f.has('protectRecovery');h.recoveryFatigueThreshold=threshold;},
     starting:n=>{startHorse(n,id,f.get('pace'));ownedHorse(n,id).autoTrain=true;},
     education:n=>{if(!educationSession(n,ownedHorse(n,id),f.get('activity')))throw Error('Education paused for rest, travel or medical care, or already completed today.');},
@@ -152,6 +155,7 @@ app.addEventListener('submit',async e=>{
     rename:n=>rename(n,id,f.get('name')),
     country:n=>{changeCountry(n,f.get('country'));state.raceCountry=f.get('country');},
     settings:n=>{
+      const maxYears=Number(f.get('maximumRacingCareerYears'));if(!Number.isInteger(maxYears)||maxYears<1||maxYears>5)throw Error('The maximum racing career is 1–5 elapsed years from debut.');n.settings.maximumRacingCareerYears=maxYears;for(const h of Object.values(n.horses)){initializeDurability(n,h);completeRacingCareer(n,h);refreshMaterialValue(n,h);}
       if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
       const juvenileRate=Number(f.get('eliteJuvenileCatalogChance'));if(!Number.isFinite(juvenileRate)||juvenileRate<0||juvenileRate>100)throw Error('Choose a juvenile consignment frequency from 0 to 100 percent.');n.settings.eliteJuvenileCatalogChance=juvenileRate/100;
       const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
@@ -166,7 +170,7 @@ app.addEventListener('submit',async e=>{
     cover:n=>cover(n,f.get('damId'),f.get('sireId'),f.get('method'),f.get('batchId')),
     collect:n=>collect(n,f.get('sireId')),batch:n=>transferBatch(n,id,f.get('owner'),f.get('country')),
   };
-  if(actions[kind])await update(actions[kind],undefined,[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
+  if(actions[kind])await update(actions[kind],undefined,kind==='settings'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
 });
 app.addEventListener('input',e=>{if(e.target.id==='search'){state.query=e.target.value;state.page=0;const pos=e.target.selectionStart;render();const input=app.querySelector('#search');input.focus();input.setSelectionRange(pos,pos);}});
 app.addEventListener('change',async e=>{

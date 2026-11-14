@@ -9,7 +9,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
  try{
   if(data.type==='load'){
    const world=await loadCareer();
-   if(world){let changed=false;
+   if(world){let changed=!!world.migrationNeedsSave;delete world.migrationNeedsSave;
     if(!world.pedigreeHistoryVersion&&world.settings.historyYears>0){seedPedigreeCareers(world);changed=true;}
     if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;changed=true;}
     if(changed)await saveCareer(world);

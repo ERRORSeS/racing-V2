@@ -9,6 +9,7 @@ export function timelineIssue(w,h,start,fixtures=new Map(w.fixtures.map(f=>[f.id
  if(f.conditions?.sex&&f.conditions.sex!=='open'&&h.sex!==f.conditions.sex)return 'Ineligible sex restriction';
  const prior=h.starts.filter(s=>s.day<r.day),wins=prior.filter(s=>s.place===1).length,conditions=f.conditions||{},maxWins=conditions.maxWins??(f.classId==='maiden'?0:null);
  if(maxWins!=null&&wins>maxWins||conditions.minWins!=null&&wins<conditions.minWins)return 'Published win restriction not met at race date';
+ if(conditions.minPlacings!=null&&prior.filter(s=>s.place!=null&&s.place>=1&&s.place<=3).length<conditions.minPlacings)return 'Published top-three restriction not met at race date';
  const rated=prior.filter(s=>s.performanceRating!=null).slice(-5),rating=rated.length>=3?Math.round(rated.reduce((n,s)=>n+s.performanceRating,0)/rated.length):null;
  if(conditions.minRating!=null&&(rating==null||rating<conditions.minRating)||conditions.maxRating!=null&&rating!=null&&rating>conditions.maxRating)return 'Published rating restriction not met at race date';
  if(conditions.bredIn&&h.country!==conditions.bredIn)return 'Birth-jurisdiction restriction not met';

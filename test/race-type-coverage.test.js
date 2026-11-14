@@ -16,7 +16,7 @@ test('All ten official race types occur in every country in each month of a full
   w.day=month*30;renewCalendar(w);
   for(const country of Object.keys(COUNTRIES)){
    const fixtures=w.fixtures.filter(f=>f.country===country&&f.day>=w.day&&f.day<w.day+30);
-   for(const [type]of OFFICIAL_RACE_TYPES)assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);
+   for(const [type]of OFFICIAL_RACE_TYPES){assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);assert.ok(fixtures.some(f=>f.classId===type&&f.minAge===2&&f.maxAge===4),`${country} month ${month+1}: missing ages 2–4 ${type}`);}
   }
  }
  assert.equal(new Set(w.fixtures.map(f=>f.id)).size,w.fixtures.length);
@@ -41,7 +41,7 @@ test('Race-type controls expose each category and filter cards before pagination
  const html=content(w,state);
  for(const [id,label]of OFFICIAL_RACE_TYPES){assert.ok(html.includes(`value="${id}"`));assert.ok(html.includes(label));}
  assert.ok(html.includes('Circuit Handicap'));assert.ok(!html.includes('class="fixture"><summary><strong>Horizon Juvenile Maiden'));
- assert.ok(html.includes('1 matching fixtures'));
+ assert.ok(html.includes('2 matching fixtures'));
  assert.ok(raceLevelGuideHTML().includes(RACE_PROGRESSION));
  const all=content(w,{...state,raceCountry:'All',raceType:'All'});assert.ok(all.includes('page 1 of'));assert.ok(all.includes('data-action="next"'));
 });

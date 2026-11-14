@@ -1,3 +1,7 @@
+# V7 lifecycle, market and progression update
+
+Individual racing durability, a five-year debut window, persistent strain, bounded exposure risk, canonical per-start appraisals and age 2–4 routes across every race type. Minimum non-Maiden win progression now accepts top-three finishes. See [implementation, compatibility and tests](docs/V7-IMPLEMENTATION.md).
+
 # V6 release-priority repairs
 
 Verified sale careers and legacy record review, queued time skips with browsing available, revision-checked incremental autosave, and individual fatigue/intensity controls. See [V6 implementation, acceptance evidence and remaining scope](docs/V6-RELEASE-STATUS.md).
