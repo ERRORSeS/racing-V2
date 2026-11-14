@@ -29,3 +29,5 @@ The pre-existing Claiming category has published claim prices; automated post-ra
 - Production build passed. Full-suite results are recorded in the pull request.
 
 The later V7 lifecycle, market and expanded 2–4 progression work is described in [V7-IMPLEMENTATION.md](V7-IMPLEMENTATION.md).
+
+Regular G1, G2 and G3 cards now use the open racing-age range 2–12, including scheduled cards loaded from existing saves. Juvenile and Young Horses labels are removed from these cards. Named annual classics retain their published age conditions; completed and historical cards, entries, results, and performance formulas are preserved. Juvenile distance and education safeguards still apply.

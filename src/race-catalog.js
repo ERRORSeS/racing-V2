@@ -34,7 +34,7 @@ export function renewCalendar(w,start=w.day) {
    w.calendarGenerationLog.push({key,region,year:Math.floor(monthStart/360)+1,month:Math.floor(monthStart%360/30)+1,templateVersion:4,outputRaceIds,committedAtGameTick:w.day});
   }
  }
- ensureRaceTypeCoverage(w,start);ensureYoungProgression(w,start);
+ ensureRaceTypeCoverage(w,start);ensureYoungProgression(w,start);openGradedRaceAges(w);
 }
 
 function publishClassics(w,start){for(const year of [Math.floor(start/360)+1,Math.floor(start/360)+2])for(const series of CLASSIC_SERIES){const edition={...series,...w.settings.majorRaceOverrides?.[year]?.[series.id]},day=(year-1)*360+(edition.month-1)*30+edition.day-1,id=`major-USA-${year}-${series.id}`;if(day<=w.day||w.fixtures.some(f=>f.id===id))continue;const c=RACE_CLASSES.find(c=>c.id===edition.classId);w.fixtures.push({id,seriesId:series.id,majorSeriesId:series.id,year,country:'USA',day,track:edition.track||'Liberty Downs',surface:'dirt',distance:edition.distance,title:edition.name,grade:classLabel(c,'USA'),classId:c.id,raceType:c.type,tier:c.tier,blackType:true,isAnnualMajor:true,status:'scheduled',phase:'EntriesOpen',entries:[],minAge:3,maxAge:3,maxRunners:20,minStarters:2,targetFieldSize:8,conditions:{sex:'open'},qualification:edition.qualification||null,qualifyingRoute:edition.points?'USA Derby':null,qualifyingPoints:edition.points||[],purse:series.id==='kentucky-derby'?'500000000':c.purse,fee:'10000',going:'good',course:{direction:'left',turns:2,undulating:false},resultId:null,dateModel:'Synthetic 30-day month approximation; configurable annual overrides, not a live official calendar'});}}
@@ -79,5 +79,16 @@ export function ensureYoungProgression(w,start=w.day){
     w.fixtures.push(f);local.push(f);const log=w.calendarGenerationLog?.find(l=>l.region===country&&l.year===f.year&&l.month===f.month);if(log){log.outputRaceIds??=[];if(!log.outputRaceIds.includes(id))log.outputRaceIds.push(id);}
    }
   }
+ }
+}
+
+// Ordinary graded cards are open-age; named classics keep their published conditions.
+// Only future scheduled cards change, leaving historical eligibility and results intact.
+export function openGradedRaceAges(w){
+ for(const f of w.fixtures){
+  if(f.status!=='scheduled'||f.historical||f.isAnnualMajor||f.majorSeriesId||!['g3','g2','g1'].includes(f.classId))continue;
+  f.minAge=2;f.maxAge=12;
+  f.conditions??={};f.conditions.minAge=2;f.conditions.maxAge=12;
+  f.title=f.title.replace(/Young Horses /g,'').replace(/Juvenile /g,'').replace(/ \(2–4\)/g,'');
  }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld} from '../src/world.js';
-import {renewCalendar,ensureRaceTypeCoverage} from '../src/race-catalog.js';
+import {renewCalendar,ensureRaceTypeCoverage,openGradedRaceAges} from '../src/race-catalog.js';
 import {OFFICIAL_RACE_TYPES,RACE_PROGRESSION} from '../src/race-types.js';
 import {COUNTRIES} from '../src/rules.js';
 import {upgrade} from '../src/upgrade.js';
@@ -16,7 +16,7 @@ test('All ten official race types occur in every country in each month of a full
   w.day=month*30;renewCalendar(w);
   for(const country of Object.keys(COUNTRIES)){
    const fixtures=w.fixtures.filter(f=>f.country===country&&f.day>=w.day&&f.day<w.day+30);
-   for(const [type]of OFFICIAL_RACE_TYPES){assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);assert.ok(fixtures.some(f=>f.classId===type&&f.minAge===2&&f.maxAge===4),`${country} month ${month+1}: missing ages 2–4 ${type}`);}
+   for(const [type]of OFFICIAL_RACE_TYPES){assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);assert.ok(fixtures.some(f=>f.classId===type&&f.minAge===2&&f.maxAge===(['g3','g2','g1'].includes(type)?12:4)),`${country} month ${month+1}: missing open progression ${type}`);}
   }
  }
  assert.equal(new Set(w.fixtures.map(f=>f.id)).size,w.fixtures.length);
@@ -48,4 +48,18 @@ test('Race-type controls expose each category and filter cards before pagination
 
 test('Coverage leaves partial/imported race archives untouched',()=>{
  const w=make();w.fixtures=w.fixtures.slice(0,1);const before=structuredClone(w.fixtures);ensureRaceTypeCoverage(w);assert.deepEqual(w.fixtures,before);
+});
+
+
+test('Scheduled graded age migration permits older runners and preserves classics, archives and entries',async()=>{
+ const {eligibility}=await import('../src/racing.js');
+ const w=createWorld({country:'USA',seed:'graded-open-age',historyYears:0,creativeMode:true,starterEducation:'race_ready',starters:[{sex:'colt'}]}),h=Object.values(w.horses).find(h=>h.owner==='player');
+ const fixtures=w.fixtures.filter(f=>f.country==='USA'&&!f.isAnnualMajor&&['g1','g2','g3'].includes(f.classId));
+ for(const f of fixtures){f.minAge=2;f.maxAge=4;f.conditions.minAge=2;f.conditions.maxAge=4;}
+ const archived={...structuredClone(fixtures[0]),id:'graded-archive',status:'completed',resultId:'old-result'},classic=structuredClone(w.fixtures.find(f=>f.majorSeriesId));w.fixtures.push(archived);
+ const entries=structuredClone(fixtures.map(f=>f.entries)),results=structuredClone(w.results),rng=w.rng;
+ openGradedRaceAges(w);
+ for(const born of [-720,-1800,-2520]){h.born=born;for(const f of fixtures){assert.equal(f.minAge,2);assert.equal(f.maxAge,12);assert.equal(f.conditions.maxAge,12);if(born===-720)assert.doesNotMatch(eligibility(w,h,f)||'',/age restriction/);else assert.equal(eligibility(w,h,f),null);assert.ok(!/Juvenile|2–4|Young Horses/.test(f.title));}}
+ assert.deepEqual(fixtures.map(f=>f.entries),entries);assert.deepEqual(w.fixtures.find(f=>f.id===classic.id),classic);assert.equal(archived.maxAge,4);assert.deepEqual(w.results,results);assert.equal(w.rng,rng);
+ const once=structuredClone(w.fixtures);openGradedRaceAges(w);assert.deepEqual(w.fixtures,once);
 });
