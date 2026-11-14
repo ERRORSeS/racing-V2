@@ -1,3 +1,4 @@
+import { ensureCalendarHorizon } from './race-catalog.js';
 import { patchBase, worldPatch } from './world-patch.js';
 import { recruitAccomplishedSires, updateStudFees } from './stud.js';
 import { seedPedigreeCareers } from './history.js';
@@ -9,7 +10,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
  try{
   if(data.type==='load'){
    const world=await loadCareer();
-   if(world){let changed=!!world.migrationNeedsSave;delete world.migrationNeedsSave;
+   if(world){let changed=ensureCalendarHorizon(world)||!!world.migrationNeedsSave;delete world.migrationNeedsSave;
     if(!world.pedigreeHistoryVersion&&world.settings.historyYears>0){seedPedigreeCareers(world);changed=true;}
     if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;changed=true;}
     if(changed)await saveCareer(world);
@@ -18,6 +19,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
   }
   if(data.type==='save'){const revision=await saveCareer(data.world);residentWorld=data.world;send({requestId:data.requestId,saved:true,revision});return;}
   const world=data.type==='create'?createWorld(data.config):data.type==='import'?decode(data.text):data.world||residentWorld;
+  if(data.type==='import')ensureCalendarHorizon(world);
   if(data.type==='import'&&!world.pedigreeHistoryVersion&&world.settings.historyYears>0)seedPedigreeCareers(world);
   if(data.type==='advance'||!data.type){
    if(world)base=patchBase(world);

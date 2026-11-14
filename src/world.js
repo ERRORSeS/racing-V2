@@ -1,3 +1,4 @@
+import { ensureCalendarHorizon } from './race-catalog.js';
 import { recordRetirement } from './durability.js';
 import { refreshMaterialValue } from './valuation.js';
 import { initializeV7World, monthlyV7Review } from './v7.js';
@@ -89,7 +90,7 @@ function npcMonth(w) {
   }
 }
 export function advanceWorld(w,days) {
-  if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');upgrade(w);
+  if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');upgrade(w);ensureCalendarHorizon(w);
   for(let i=0;i<days;i++){
     w.day++;
     for(const c of w.coverings)foal(w,c);
