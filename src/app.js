@@ -1,3 +1,4 @@
+import { renewCalendar } from './race-catalog.js';
 import { editDurability, initializeDurability, completeRacingCareer } from './durability.js';
 import { refreshMaterialValue } from './valuation.js';
 import { applyWorldPatch } from './world-patch.js';
@@ -28,7 +29,7 @@ const app=document.querySelector('#app');mountGuide();
 let advancing=false,advanceStatus='';
 let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
-const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Current'};
+const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Upcoming'};
 function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus,advanceStatus},notice,busy&&!advancing);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 let backgroundWorker=null,requestSequence=0;const workerRequests=new Map();
@@ -78,6 +79,7 @@ app.addEventListener('click',async e=>{
   if(a==='cancel-setup'){settingUp=false;render();return;}
   if(!world&&a==='restore'){try{await autosaves.flush();const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
   if(!world)return;
+  if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
   if(a==='medical-profile'){openHorse(id);state.profileTab='Medical';render();return;}
   if(a==='youngstock-profile'){openHorse(id);state.profileTab='Youngstock & Starting';render();return;}
   if(a==='market-tab'){state.marketTab=id;state.page=0;state.query='';render();return;}
@@ -104,6 +106,7 @@ app.addEventListener('click',async e=>{
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
   const actions={
+    'repair-calendar':n=>{renewCalendar(n);state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;},
     'medical-decision':n=>medicalDecision(n,id,b.dataset.choice),
     interview:n=>respondToPress(n,id,b.dataset.tone),
     'follow-stable':n=>{if(!n.owners[id])throw Error('Stable not found.');n.followedStables=n.followedStables.includes(id)?n.followedStables.filter(x=>x!==id):[...n.followedStables,id];},

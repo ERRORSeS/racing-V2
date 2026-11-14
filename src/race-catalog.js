@@ -97,7 +97,6 @@ export function openGradedRaceAges(w){
 
 // Repair managed careers on load/advance without rebuilding healthy calendars on each click.
 export function ensureCalendarHorizon(w){
- if(!w.calendarGenerationLog?.some(log=>log.templateVersion===4))return false;
  const ids=new Set(w.fixtures.map(f=>f.id)),first=Math.floor(w.day/30)*30;
  for(let monthStart=first;monthStart<first+30*MEETING_RULES.lookaheadMonths;monthStart+=30){
   for(const country of Object.keys(COUNTRIES))for(const [meeting,offset]of MEETING_RULES.days.entries()){
