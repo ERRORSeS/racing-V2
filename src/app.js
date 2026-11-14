@@ -162,7 +162,7 @@ app.addEventListener('submit',async e=>{
       if(f.get('fieldDensity')&&f.get('fieldDensity')!==n.settings.fieldDensity)setFieldDensity(n,f.get('fieldDensity'));n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','creativeMode','revealPotential','debug'])n.settings[key]=f.has(key);
     },
     care:n=>setCare(n,id,{feed:f.get('feed'),turnout:Number(f.get('turnout')),bit:f.get('bit'),accessory:f.get('accessory'),autoTravel:f.has('autoTravel'),autoCare:f.has('autoCare'),autoVet:f.has('autoVet'),autoFarrier:f.has('autoFarrier')}),
-    travel:n=>travel(n,id,f.get('country')),
+    travel:n=>travel(n,id,f.get('country'),{withdrawConflicts:f.has('withdrawConflicts')}),
     entry:n=>enterRace(n,id,f.get('horseId'),f.get('jockeyId'),f.get('tactic')),
     farrier:n=>{ownedHorse(n,id);farrier(n,id,f.get('shoe'));},
     list:n=>listHorse(n,id,f.get('amount'),f.get('kind')),

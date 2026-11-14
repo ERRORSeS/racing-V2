@@ -3,7 +3,7 @@ import {recordSaleEvidence} from '../src/valuation.js';
 import {upgrade} from '../src/upgrade.js';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createWorld,advanceWorld,changeCountry} from '../src/world.js';
-import {initializeDurability,recordFirstStart,recordExposure,durabilityDay,careerWindow,completeRacingCareer,racingWindowReason} from '../src/durability.js';
+import {initializeDurability,recordFirstStart,recordExposure,durabilityDay,projectedWindow,careerWindow,completeRacingCareer,racingWindowReason} from '../src/durability.js';
 import {assessExposure} from '../src/injury-risk.js';
 import {initializeAppraisal,appraisal,marketComponents,recordVerifiedStart} from '../src/valuation.js';
 import {initializeV7World,settleV7Race} from '../src/v7.js';
@@ -77,3 +77,5 @@ test('Weak three-runner pattern races cannot manufacture a breeding premium',()=
 test('A realized sale adds bounded non-cash evidence once without changing the debut clock or paid amount',()=>{
  const w=make(),l=w.listings.find(l=>l.kind==='private'),h=w.horses[l.horseId],first=h.racingDurability.firstRaceDate,old=Number(appraisal(w,h)),balance=BigInt(w.balance);l.price='75000000';buy(w,l.id);assert.equal(l.salePrice,'75000000');assert.equal(BigInt(w.balance),balance-75000000n);assert.equal(h.racingDurability.firstRaceDate,first);assert.ok(Number(appraisal(w,h))<old*1.05);const count=h.valuationHistory.length;recordSaleEvidence(w,h,l);assert.equal(h.valuationHistory.length,count);assert.equal(h.marketAppraisal.salesEvidence.length,1);
 });
+
+test('A permanent clinical restriction has zero projected racing return while retaining its breeding identity',()=>{const w=make(),h=own(w);w.settings.fatalities=false;injure(w,h,'Very Severe','Permanent tendon rupture');assert.equal(h.status,'active');assert.equal(projectedWindow(h,w.day).high,0);assert.equal(marketComponents(w,h).future,0);assert.ok(h.medicalCase);assert.equal(h.sex,'colt');});
