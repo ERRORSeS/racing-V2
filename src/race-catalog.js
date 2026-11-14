@@ -10,11 +10,13 @@ const NAMES=['Horizon','Meadow','Meridian','Riverstone','Morning Light','Crown',
 export function renewCalendar(w,start=w.day) {
  w.calendarGenerationLog??=[];
  publishClassics(w,start);
+ const fixtureIds=new Set(w.fixtures.map(f=>f.id));
  const first=Math.floor(start/30)*30;
  for(let monthStart=first;monthStart<first+30*MEETING_RULES.lookaheadMonths;monthStart+=30){
   for(const [region,settings] of Object.entries(COUNTRIES)){
    const key=`${w.seed}:${region}:${monthStart}:v4`;
-   if(w.calendarGenerationLog.some(log=>log.key===key))continue;
+   const existingLog=w.calendarGenerationLog.find(log=>log.key===key);
+   // A log records publication; fixture IDs prevent duplicates and allow missing cards to recover.
    const outputRaceIds=[],cycle=Math.floor(monthStart/30),density=FIELD_DENSITY[w.settings.fieldDensity||'Balanced'];
    for(const [meeting,offset] of MEETING_RULES.days.entries()){
      const day=monthStart+offset;
@@ -25,13 +27,13 @@ export function renewCalendar(w,start=w.day) {
      const c=RACE_CLASSES.find(c=>c.id===classId),salt=seed(`${key}:${meeting}:${slot}`),distance=(juvenile?[1000,1200,1400,1600,1800]:[1200,1600,2000,2400,2800,3200])[salt%(juvenile?5:6)];
      const fixtureId=`fixture-v4-${region}-${monthStart}-${meeting}-${slot}`;
      // Older saves can have booked V3 races on this day; preserve them and avoid overbooking supply.
-     if(w.fixtures.some(f=>f.id===fixtureId))continue;
+     if(fixtureIds.has(fixtureId))continue;
      const conditions={...conditionsFor(c,slot),sex:'open',minAge:juvenile?2:3,maxAge:juvenile?2:12};
      const f={id:fixtureId,seriesId:`local-${region}-${slot}-${classId}`,meetingId:`meeting-${region}-${monthStart}-${meeting}`,generatedCycleKey:key,templateVersion:4,year:Math.floor(monthStart/360)+1,month:Math.floor(monthStart%360/30)+1,day,country:region,track:settings.track,surface:slot===2?'synthetic':settings.surface,distance,title:`${NAMES[(cycle+meeting+slot)%NAMES.length]} ${juvenile?'Juvenile ':''}${classLabel(c,region)}`,grade:classLabel(c,region),classId,raceType:c.type,tier:c.tier,blackType:!!c.blackType,isAnnualMajor:false,status:'scheduled',phase:'EntriesOpen',entries:[],minAge:conditions.minAge,maxAge:conditions.maxAge,maxRunners:Math.max(12,density.target),minStarters:2,targetFieldSize:density.target,conditions,purse:c.purse,claimPrice:c.claimPrice||null,fee:'10000',going:['firm','good','soft'][salt%3],temperature:Math.round(16+14*Math.sin(day/360*2*Math.PI)),course:{direction:['Japan','Australia'].includes(region)?'right':'left',turns:distance<=1200?0:2,undulating:['UK','Ireland'].includes(region)},resultId:null};
-     w.fixtures.push(f);outputRaceIds.push(f.id);
+     w.fixtures.push(f);fixtureIds.add(f.id);outputRaceIds.push(f.id);
     }
    }
-   w.calendarGenerationLog.push({key,region,year:Math.floor(monthStart/360)+1,month:Math.floor(monthStart%360/30)+1,templateVersion:4,outputRaceIds,committedAtGameTick:w.day});
+   if(existingLog){existingLog.outputRaceIds??=[];for(const id of outputRaceIds)if(!existingLog.outputRaceIds.includes(id))existingLog.outputRaceIds.push(id);}else w.calendarGenerationLog.push({key,region,year:Math.floor(monthStart/360)+1,month:Math.floor(monthStart%360/30)+1,templateVersion:4,outputRaceIds,committedAtGameTick:w.day});
   }
  }
  ensureRaceTypeCoverage(w,start);ensureYoungProgression(w,start);openGradedRaceAges(w);
@@ -91,4 +93,19 @@ export function openGradedRaceAges(w){
   f.conditions??={};f.conditions.minAge=2;f.conditions.maxAge=12;
   f.title=f.title.replace(/Young Horses /g,'').replace(/Juvenile /g,'').replace(/ \(2–4\)/g,'');
  }
+}
+
+// Repair managed careers on load/advance without rebuilding healthy calendars on each click.
+export function ensureCalendarHorizon(w){
+ if(!w.calendarGenerationLog?.some(log=>log.templateVersion===4))return false;
+ const ids=new Set(w.fixtures.map(f=>f.id)),first=Math.floor(w.day/30)*30;
+ for(let monthStart=first;monthStart<first+30*MEETING_RULES.lookaheadMonths;monthStart+=30){
+  for(const country of Object.keys(COUNTRIES))for(const [meeting,offset]of MEETING_RULES.days.entries()){
+   if(monthStart+offset<=w.day)continue;
+   for(let slot=0;slot<MEETING_RULES.racesPerMeeting;slot++){
+    if(!ids.has(`fixture-v4-${country}-${monthStart}-${meeting}-${slot}`)){renewCalendar(w);return true;}
+   }
+  }
+ }
+ return false;
 }
