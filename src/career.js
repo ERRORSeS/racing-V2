@@ -13,7 +13,7 @@ export function career(h) {
     starts: starts.length, wins, seconds, thirds,
     record: `${starts.length}(${wins}-${seconds}-${thirds})`,
     earnings: starts.reduce((n, s) => n + BigInt(s.prize || '0'), 0n).toString(),
-    stakesWins: starts.filter(s=>s.place===1&&(s.tier||0)>=4).length,blackType:starts.some(s=>s.blackType&&s.place!=null&&s.place<=3),highestGrade:starts.slice().sort((a,b)=>(b.tier||0)-(a.tier||0))[0]?.grade||null,lastFive:starts.slice(-5).map(s=>s.place??'PU'),
+    stakesWins: starts.filter(s=>s.place===1&&(s.tier||0)>=4).length,blackType:starts.some(s=>s.blackType&&s.place!=null&&s.place<=3),highestGrade:starts.filter(s=>s.place!=null).sort((a,b)=>(b.tier||0)-(a.tier||0))[0]?.grade||null,lastFive:starts.slice(-5).map(s=>s.place??'PU'),
     best: starts.some(s=>s.place!=null) ? Math.min(...starts.filter(s=>s.place!=null).map(s=>s.place)) : null,
   };
   careerCache.set(h,{starts:h.starts,length:h.starts.length,value});return value;
@@ -44,4 +44,14 @@ export function kinship(w, first, second) {
 }
 export function pedigreeComplete(w, id, depth=4) {
   if(depth===0)return true; const h=w.horses[id];return !!h?.sire&&!!h?.dam&&pedigreeComplete(w,h.sire,depth-1)&&pedigreeComplete(w,h.dam,depth-1);
+}
+
+export const CAREER_FILTERS=['All','Unraced','Maiden','Started','Winner','Stakes Placed','Stakes Winner','Pattern Winner','Juvenile Stakes Winner',['g1','G1 winner'],['g2','G2 winner'],['g3','G3 winner'],['listed','Listed winner']];
+export function careerMatches(h,filter='All'){
+ const c=career(h);if(filter==='All')return true;if(filter==='Unraced')return c.starts===0;if(filter==='Started')return c.starts>0;if(filter==='Maiden')return c.starts>0&&c.wins===0;if(filter==='Winner')return c.wins>0;
+ if(filter==='Stakes Placed')return h.starts.some(s=>s.blackType&&s.place>=1&&s.place<=3);
+ if(filter==='Stakes Winner')return c.stakesWins>0;
+ if(filter==='Pattern Winner')return h.starts.some(s=>s.place===1&&['g1','g2','g3'].includes(s.classId));
+ if(filter==='Juvenile Stakes Winner')return h.starts.some(s=>s.place===1&&s.tier>=4&&age(h,s.day)===2);
+ return h.starts.some(s=>s.place===1&&s.classId===filter);
 }

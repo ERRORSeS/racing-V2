@@ -7,3 +7,5 @@ Reviewed Racing_Game_V6_Complete_Prompt_RESENT.pdf, particularly sections 22, 23
 - A country with fewer than four accomplished NPC sires can recruit one existing stakes-winning male runner aged 4–12 per monthly review. Retirement preserves identity, starts, earnings, progeny and ownership; future race entries are scratched and automatic racing/training stop. No careers or progeny are invented. New careers and existing saves receive this inventory review; history-disabled careers do not receive fabricated champions.
 
 Remaining PDF scope includes richer stud-farm contracts and seasonal inventory, annual sire tables and advanced directory pagination. The V6 release priorities also require a separate comprehensive audit of age-appropriate sale histories and repair of impossible legacy records, fatigue scenario coverage, and measured day/month/year skips. Previous performance/autosave work is not proof that every V6 acceptance case passes. The user's soundness clarification takes precedence over legacy PDF language implying injury immunity.
+
+Later V6 release-priority work and current acceptance evidence are tracked in [V6-RELEASE-STATUS.md](V6-RELEASE-STATUS.md).

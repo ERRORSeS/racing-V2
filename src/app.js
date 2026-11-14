@@ -1,3 +1,5 @@
+import { applyWorldPatch } from './world-patch.js';
+import { createAdvanceQueue } from './advance-queue.js';
 import { actionSnapshot } from './action-snapshot.js';
 import { createSaveQueue } from './save-queue.js';
 import { startHorse, startingSession, startingSessionReason, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
@@ -21,34 +23,52 @@ import { saveCareer, loadCareer, backupCareer, encode, validate } from './storag
 import { shell, setupView } from './ui.js';
 
 const app=document.querySelector('#app');mountGuide();
+let advancing=false,advanceStatus='';
 let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
 const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Current'};
-function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus},notice,busy);}
+function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus,advanceStatus},notice,busy&&!advancing);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 let backgroundWorker=null,requestSequence=0;const workerRequests=new Map();
+let fallbackChain=Promise.resolve();
+function receiveBackground({data}){
+ const request=workerRequests.get(data.requestId);if(!request)return;
+ if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
+ workerRequests.delete(data.requestId);
+ if(data.error){const error=Error(data.error);error.committed=data.committed;request.reject(error);}else request.resolve(data);
+}
 function workerRequest(type,payload){
- if(!backgroundWorker){backgroundWorker=new Worker(new URL('./time-worker.js',import.meta.url),{type:'module'});backgroundWorker.onmessage=({data})=>{const request=workerRequests.get(data.requestId);if(!request)return;workerRequests.delete(data.requestId);data.error?request.reject(Error(data.error)):request.resolve(data);};backgroundWorker.onerror=error=>{for(const r of workerRequests.values())r.reject(Error(error.message||'Background work failed.'));workerRequests.clear();backgroundWorker.terminate();backgroundWorker=null;};}
- return new Promise((resolve,reject)=>{const requestId=++requestSequence;workerRequests.set(requestId,{resolve,reject});backgroundWorker.postMessage({type,requestId,...payload});});
+ if(!backgroundWorker&&typeof Worker!=='undefined'){
+  try{backgroundWorker=new Worker(new URL('./time-worker.js',import.meta.url),{type:'module'});backgroundWorker.onmessage=receiveBackground;
+   backgroundWorker.onerror=error=>{for(const r of workerRequests.values())r.reject(Error(error.message||'Background work failed.'));workerRequests.clear();backgroundWorker.terminate();backgroundWorker=null;};
+  }catch{/* Cooperative task fallback below keeps older browsers usable. */}
+ }
+ return new Promise((resolve,reject)=>{
+  const requestId=++requestSequence,data={type,requestId,...payload};workerRequests.set(requestId,{resolve,reject});
+  if(backgroundWorker)backgroundWorker.postMessage(data);
+  else fallbackChain=fallbackChain.then(async()=>{const {runBackgroundJob}=await import('./background-jobs.js');await runBackgroundJob(structuredClone(data),message=>receiveBackground({data:message}),{cooperative:true});}).catch(error=>receiveBackground({data:{requestId,error:error.message}}));
+ });
 }
 let actionPending=false,saveStatus='Saved';
-const autosaves=createSaveQueue(snapshot=>workerRequest('save',{world:snapshot}),{onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;}});
+const autosaves=createSaveQueue(async snapshot=>{snapshot.storageRevision=world?.storageRevision||snapshot.storageRevision||0;const result=await workerRequest('save',{world:snapshot});snapshot.storageRevision=result.revision;if(world)world.storageRevision=result.revision;},{onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status.startsWith('Save failed:')){notice='Autosave failed. Your changes remain in memory; export, retry or reload.';render();}}});
 async function update(action,message='Changes applied. Autosave pending.',horseIds=[]) {
- if(busy||actionPending)return;actionPending=true;stopReplay();
+ if(busy||actionPending){notice='Time is advancing. You can browse records; changes resume after the queued skips finish.';render();return;}actionPending=true;stopReplay();
  try{const next=actionSnapshot(world,{horseIds});await action(next);validate(next);world=next;autosaves.schedule(world);notice=message;}
  catch(error){notice=error.message;}finally{actionPending=false;}render();
 }
-async function advance(days){
- if(busy||actionPending)return;busy=true;stopReplay();notice=`Processing ${days} days…`;render();
- try{await autosaves.flush();const result=await workerRequest('advance',{world,days});world=result.world;saveStatus='Saved';notice=`Advanced ${days} days and saved. Ready for the next skip.`;}
- catch(error){notice=error.message;}finally{busy=false;render();}
-}
+const advances=createAdvanceQueue(async days=>{
+ stopReplay();notice=`Advancing ${days} days; you can continue browsing.`;advanceStatus=`Advancing 0/${days} days`;const progress=app.querySelector('#advance-status');if(progress)progress.textContent=advanceStatus;const message=app.querySelector('.notice');if(message)message.textContent=notice;
+ try{await autosaves.flush();const result=await workerRequest('advance',{days,expectedRevision:world.storageRevision||0});world=result.patch?applyWorldPatch(world,result.patch):result.world;saveStatus='Saved';notice=`Advanced ${days} days and saved.`;}
+ catch(error){if(error.committed)world=error.committed;saveStatus='Skip stopped: '+error.message;notice=`${error.message} The last durable checkpoint is retained. Export or reload to recover.`;throw error;}
+ finally{render();}
+},{onChange:count=>{advancing=count>0;busy=advancing;advanceStatus=count?`Time skips queued: ${count}`:'';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;if(!count)render();}});
+async function advance(days){if(!Number.isSafeInteger(days)||days<1||days>36000){notice='Advance 1–36,000 days at a time.';render();return;}try{await advances.enqueue(days);}catch{/* Error and checkpoint already displayed. */}}
 window.addEventListener('pagehide',()=>{if(autosaves.dirty)autosaves.flush().catch(()=>{});});
 function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={starterEducation:f.get('starterEducation')||'Not started',stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
 function exportCareer(){const url=URL.createObjectURL(new Blob([encode(world)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function openHorse(id){if(state.selected)state.profileStack.push({id:state.selected,tab:state.profileTab});state.selected=id;state.profileTab='Overview';stopReplay();render();}
 app.addEventListener('click',async e=>{
-  if(busy||actionPending)return;
+  if(busy&&!advancing||actionPending)return;
   const link=e.target.closest('[data-horse]');if(link){e.preventDefault();openHorse(link.dataset.horse);return;}
   const nav=e.target.closest('[data-nav]');if(nav){e.preventDefault();stopReplay();state.tab=nav.dataset.nav;state.selected=null;state.resultId=null;state.profileStack=[];state.query='';state.page=0;render();return;}
   const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;
@@ -73,9 +93,12 @@ app.addEventListener('click',async e=>{
   if(a==='replay-reset'){stopReplay();state.replayFrame=0;render();return;}
   if(a==='replay-next'){stopReplay();state.replayFrame=Math.min(state.replayFrame+1,world.results[state.resultId].frames.length-1);render();return;}
   if(a==='journal-archive'){state.journalArchive=!state.journalArchive;render();return;}
-  if(a==='breeder-stock'){state.breeder=id;state.query='';state.countryFilter='All';state.sexFilter='All';state.page=0;render();document.querySelector('main')?.scrollIntoView({block:'start'});return;}
+  if(a==='breeder-stock'){state.breeder=id;state.query='';state.countryFilter='All';state.sexFilter='All';state.raceRecordFilter='All';state.page=0;render();document.querySelector('main')?.scrollIntoView({block:'start'});return;}
   if(a==='breeder-directory'){state.breeder=null;render();return;}
   if(a==='export'){exportCareer();return;}
+  if(a==='retry-save'){try{await autosaves.flush();}catch(error){notice=error.message;}render();return;}
+  if(a==='reload-career'){location.reload();return;}
+  if(a==='new-career'&&advancing){notice='Wait for the queued skips before creating another career.';render();return;}
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
   const actions={
@@ -104,19 +127,21 @@ app.addEventListener('click',async e=>{
     scratch:n=>scratchRace(n,id,b.dataset.horseId),
     hire:n=>hire(n,id),dismiss:n=>dismiss(n,id),
     'review-break':n=>reviewBreak(n,id),dna:n=>dnaPanel(n,id),'cancel-travel':n=>cancelTravel(n,id),'read-news':n=>markNews(n,id,'read'),'bookmark-news':n=>markNews(n,id,'bookmark'),
-    restore:async n=>{await autosaves.flush();Object.assign(n,await backupCareer());},
+    restore:async n=>{await autosaves.flush();const revision=n.storageRevision;Object.assign(n,await backupCareer());n.storageRevision=revision;},
   };
   if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Changes applied. Autosave pending.',[id,b.dataset.horseId,world.listings.find(l=>l.id===id)?.horseId]);
 });
 app.addEventListener('submit',async e=>{
-  e.preventDefault();if(busy||actionPending)return;const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
+  e.preventDefault();if(busy&&!advancing||actionPending)return;const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
   if(kind==='setup'){
     collectSetup();busy=true;notice='Creating your stable and linked race/pedigree careers…';render();
     try{const config={...draft,starterEducation:draft.starterEducation==='Creative race-ready'?'race_ready':draft.starterEducation==='Introduction started'?'introduction':'not_started',catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)};await autosaves.flush();const result=await workerRequest('create',{config});world=result.world;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];state.damId=null;state.sireId=null;notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
   }
   if(!world)return;
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
+  if(advancing){notice='Time is advancing; changes resume after queued skips finish.';render();return;}
   const actions={
+    intensity:n=>{const h=ownedHorse(n,id),intensity=f.get('intensity');if(!['Rest','Light','Balanced','Intense'].includes(intensity))throw Error('Choose a training intensity.');const threshold=Number(f.get('recoveryFatigueThreshold'));if(!Number.isFinite(threshold)||threshold<10||threshold>70)throw Error('Choose a recovery threshold from 10 to 70.');h.trainingIntensity=intensity;h.protectRecovery=f.has('protectRecovery');h.recoveryFatigueThreshold=threshold;},
     starting:n=>{startHorse(n,id,f.get('pace'));ownedHorse(n,id).autoTrain=true;},
     education:n=>{if(!educationSession(n,ownedHorse(n,id),f.get('activity')))throw Error('Education paused for rest, travel or medical care, or already completed today.');},
     'youngstock-care':n=>setYoungstockCare(n,id,{diet:f.get('diet'),turnoutHours:Number(f.get('turnoutHours')),socialGroup:f.get('socialGroup'),companions:f.getAll('companion'),water:f.has('water'),shelter:f.has('shelter'),autoCare:f.has('autoCare'),autoEducation:f.has('autoEducation'),autoWean:f.has('autoWean')}),
@@ -128,6 +153,7 @@ app.addEventListener('submit',async e=>{
     country:n=>{changeCountry(n,f.get('country'));state.raceCountry=f.get('country');},
     settings:n=>{
       if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
+      const juvenileRate=Number(f.get('eliteJuvenileCatalogChance'));if(!Number.isFinite(juvenileRate)||juvenileRate<0||juvenileRate>100)throw Error('Choose a juvenile consignment frequency from 0 to 100 percent.');n.settings.eliteJuvenileCatalogChance=juvenileRate/100;
       const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
       if(f.get('fieldDensity')&&f.get('fieldDensity')!==n.settings.fieldDensity)setFieldDensity(n,f.get('fieldDensity'));n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','creativeMode','revealPotential','debug'])n.settings[key]=f.has(key);
     },

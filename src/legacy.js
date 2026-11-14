@@ -2,7 +2,7 @@ import { childrenOf } from './family-index.js';
 import { id } from './random.js';
 import { career } from './career.js';
 export function evaluateLegacy(w,h){
- const starts=h.starts.filter(s=>s.place!=null),g1=starts.filter(s=>s.place===1&&(s.classId==='g1'||/ (?:1)$/.test(s.grade||''))),g2=starts.filter(s=>s.place===1&&s.classId==='g2'),g3=starts.filter(s=>s.place===1&&s.classId==='g3'),listed=starts.filter(s=>s.place===1&&s.classId==='listed');
+ const starts=h.starts.filter(s=>s.place!=null),g1=starts.filter(s=>s.place===1&&s.classId==='g1'),g2=starts.filter(s=>s.place===1&&s.classId==='g2'),g3=starts.filter(s=>s.place===1&&s.classId==='g3'),listed=starts.filter(s=>s.place===1&&s.classId==='listed');
  const score=g1.length*25+g2.length*12+g3.length*6+listed.length*3;
  h.legacyScore=score;h.legacyAwards??=[];
  if(g1.length>=4&&score>=100&&!w.awards.some(a=>a.horseId===h.id&&a.category==='Legendary Racer')){const award={id:id(w,'award'),horseId:h.id,category:'Legendary Racer',day:w.day,version:1,score,evidence:g1.map(s=>s.resultId)};h.legacyAwards.push(award.id);w.awards.push(award);}

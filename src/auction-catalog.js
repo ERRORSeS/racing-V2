@@ -1,3 +1,4 @@
+import { npcConsignmentAllowed } from './catalog-policy.js';
 import { appraisal } from './valuation.js';
 import { age } from './rules.js';
 import { chronologicalDays } from './youngstock.js';
@@ -18,7 +19,7 @@ export function rotateAuctions(w){
  const month=Math.floor(w.day/30);if(w.auctionGenerationLog.includes(month))return;w.auctionGenerationLog.push(month);
  for(const country of [...new Set(Object.values(w.owners).map(o=>o.country))]){
   const primary=SEASONS[(month+(country==='Australia'?6:0))%4],open=w.listings.filter(l=>l.kind==='auction'&&!l.closed&&!l.sold&&w.horses[l.horseId].location===country&&Math.floor(l.day/30)===month);
-  const candidates=horses.filter(h=>!['player','archive'].includes(h.owner)&&h.location===country&&h.status!=='deceased'&&h.youngstock?.weaning.stage==='complete'&&!dependentDams.has(h.id)&&!unavailable.has(h.id)&&saleCategories(w,h).some(tag=>primary.includes(tag)));
+  const candidates=horses.filter(h=>npcConsignmentAllowed(w,h)&&!['player','archive'].includes(h.owner)&&h.location===country&&h.status!=='deceased'&&h.youngstock?.weaning.stage==='complete'&&!dependentDams.has(h.id)&&!unavailable.has(h.id)&&saleCategories(w,h).some(tag=>primary.includes(tag)));
   candidates.sort((a,b)=>seed(`${w.seed}:${month}:${a.id}:consignment`)-seed(`${w.seed}:${month}:${b.id}:consignment`));
   for(const h of candidates.slice(0,Math.max(0,6-open.length))){const price=appraisal(w,h);const l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind:'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],status:'open',consignmentReason:'Monthly NPC catalog rotation'};w.listings.push(l);attachAuction(w,l);}
  }

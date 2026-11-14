@@ -21,7 +21,7 @@ export function startTherapy(w,horseId,months=9,type='Long-Term Soundness Therap
 export function recoveryDay(w,h){
  if(h.status==='deceased')return;
  const b=h.breakPlan;if(b&&b.stage!=='Complete'){
-  h.fitness=clamp(h.fitness-.06);h.fatigue=clamp(h.fatigue-1);
+  h.fitness=clamp(h.fitness-.06);
   if(w.day>=b.until&&!b.reviewNotified){b.stage='Review Due';b.reviewNotified=true;event(w,'break',`${h.name}: break review due before normal training or racing.`,h.id);}
  }
  const t=h.therapy;if(t?.status==='active'){
