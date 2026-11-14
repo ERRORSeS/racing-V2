@@ -1,4 +1,4 @@
-import {age,clamp,dateLabel} from './rules.js';
+import {age,clamp,dateLabel,RULES} from './rules.js';
 import {seed} from './random.js';
 import {event,scratchEntries} from './core.js';
 export const MAX_RACING_DAYS=1800;
@@ -44,7 +44,7 @@ export function durabilityDay(w,h){const p=initializeDurability(w,h);if(h.status
  const window=careerWindow(h,w.day),reserve=Math.min(p.individualRacingLongevity,window.remainingDays==null?5:window.remainingDays/360);
  h.safeRacingYears=Math.min(h.safeRacingYears??reserve,reserve);completeRacingCareer(w,h);
 }
-export function projectedWindow(h,day){const p=h.racingDurability,window=careerWindow(h,day);if(!p)return {low:1,high:5,label:'Assessment needed'};
+export function projectedWindow(h,day){if(h.status!=='active'||(h.irreversibleSoundnessLimit??100)<RULES.minRaceSoundness)return {low:0,high:0,label:h.status==='active'?'Permanent veterinary racing restriction':'Racing retired / archived',expected:0};const p=h.racingDurability,window=careerWindow(h,day);if(!p)return {low:1,high:5,label:'Assessment needed'};
  const expected=clamp(Math.min(p.individualRacingLongevity,Math.max(0,h.safeRacingYears??p.individualRacingLongevity))-p.cumulativeRacingStrain/180-p.chronicSusceptibility/70-p.repetitiveStressIndex/80-Math.max(0,100-h.soundness)/100,0,5),remaining=Math.min(expected,window.remainingDays==null?5:window.remainingDays/360);
  return {low:Math.max(0,remaining-.75),high:Math.min(5,remaining+.75,window.remainingDays==null?5:window.remainingDays/360),label:remaining<1.5?'Limited':remaining<3?'Moderate':'Longer',expected};
 }

@@ -1,4 +1,4 @@
-import {age,clamp} from './rules.js';
+import {age,clamp,RULES} from './rules.js';
 import {career} from './career.js';
 import {careerWindow} from './durability.js';
 import {childrenOf} from './family-index.js';
@@ -31,7 +31,7 @@ function performanceFacts(w,h){
 }
 export function marketComponents(w,h){
  const {evidence,consistency,quality,merit,meritConfidence}=performanceFacts(w,h);
- const window=careerWindow(h,w.day),future=h.status!=='active'?0:window.remainingDays==null?1:clamp(window.remainingDays/1080,0,1),clinical=h.medicalCase?.45:clamp((h.potentialSoundnessCeiling??100)/100,.35,1);
+ const window=careerWindow(h,w.day),future=h.status!=='active'||(h.irreversibleSoundnessLimit??100)<RULES.minRaceSoundness?0:window.remainingDays==null?1:clamp(window.remainingDays/1080,0,1),clinical=h.medicalCase?.45:clamp((h.potentialSoundnessCeiling??100)/100,.35,1);
  const children=childrenOf(w,h.id),proven=children.filter(c=>c.starts.some(s=>{if(s.place!==1||s.classId!=='g1')return false;const e=raceMarketEvidence(w,c,s);return e&&e.fieldSize>=6&&e.fieldStrength>=.7;})).length;
  const breeding=h.status!=='deceased'&&h.sex!=='gelding'&&age(h,w.day)>=3?Math.min(5000000,Math.sqrt(merit)*450000*meritConfidence+Math.sqrt(proven)*900000):0;
  const intrinsic=Number(BigInt(legacyAppraisal(w,h,{careerValue:false}))/100n),racing=2000000*Math.pow(quality,1.4)*consistency.confidence*(.65+consistency.index*.7)*future*clinical;
