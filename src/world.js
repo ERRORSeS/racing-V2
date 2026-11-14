@@ -1,3 +1,4 @@
+import { reproductionDay } from './reproduction.js';
 import { ensureCalendarHorizon } from './race-catalog.js';
 import { recordRetirement } from './durability.js';
 import { refreshMaterialValue } from './valuation.js';
@@ -93,7 +94,7 @@ export function advanceWorld(w,days) {
   if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');upgrade(w);ensureCalendarHorizon(w);
   for(let i=0;i<days;i++){
     w.day++;
-    for(const c of w.coverings)foal(w,c);
+    reproductionDay(w);for(const c of w.coverings)foal(w,c);
     for(const h of Object.values(w.horses)){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
     for(const h of Object.values(w.horses))dailyCare(w,h);

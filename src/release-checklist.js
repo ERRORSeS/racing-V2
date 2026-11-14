@@ -1,4 +1,6 @@
 export const RELEASE_CHECKLIST=[
+ ['V8 mare reproduction','Persistent covering attempts and contracts; real pregnancy scans; individual 340–345-day estimates and hidden varied birth dates; mare status, foaling watch and sale continuity'],
+ ['V8 safeguards','Owned/NPC stud workflows, negative checks, monitored multiple-risk findings, loss and recovery, one foal per pregnancy, V7 migration and linked produce history'],
  ['Latest working changes','Race-level progression guide; major-event news; injury types, player treatment decisions and pulled-up race outcomes; faster background saves'],
  ['Latest working changes','Per-horse race policies, a USA classic/points pathway, stronger monthly training, rotating category catalogs and simulated founder careers'],
  ['Model limits','Classic dates/points use documented game approximations; full international series, proxy bidding, premiums/contracts and full cross-browser certification remain pending'],

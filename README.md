@@ -83,3 +83,5 @@ The 38-test suite includes the existing gameplay regressions plus 100,000 seeded
 This is not a claim that every numbered V1–V3 acceptance detail is finished. The visible **Release Checklist** and [V3 release checklist](docs/V3-RELEASE-CHECKLIST.md) identify the remaining full stress matrix, real-browser QA, decade recertification, exhaustive calibration and advanced incident/negotiation/press depth. The selected managed environment lacks its required browser-control tool; HTML rendering tests do not substitute for browser interaction tests.
 
 Read [genetics and racing assumptions](docs/genetics-and-racing-model.md) for evidence versus fictional approximations. V4/V5 PDFs supplied later are reference attachments; their contents were not silently treated as authorization for another implementation scope.
+
+V8 mare covering, veterinary confirmation, gestation and foaling workflows: [implementation and validation notes](docs/V8-IMPLEMENTATION.md). Owned and outside studs use the same eligibility, contract and pregnancy engine. The guide in the game explains each stage and keeps estimated dates separate from actual outcomes.

@@ -37,7 +37,9 @@ export function marketComponents(w,h){
  const intrinsic=Number(BigInt(legacyAppraisal(w,h,{careerValue:false}))/100n),racing=2000000*Math.pow(quality,1.4)*consistency.confidence*(.65+consistency.index*.7)*future*clinical;
  const segment=age(h,w.day)<2?'youngstock':h.status==='retired'?(h.sex==='gelding'?'retired gelding':'breeding stock'):'racing';
  const cap={youngstock:5000000,'retired gelding':3000000,'breeding stock':40000000,racing:h.sex==='gelding'?15000000:25000000}[segment];
- return {evidence,consistency,quality,future,clinical,breedingPremium:breeding,segment,rawTarget:Math.max(1000,Math.min(cap,intrinsic+racing+breeding)),ceiling:cap};
+ const pregnancy=(w.pregnancies||[]).find(p=>p.mareId===h.id&&!['foaled','lost'].includes(p.status)&&(p.confirmedOn!=null||p.legacyConfirmation));
+ const contract=pregnancy&&(w.studContracts||[]).find(c=>c.attemptId===pregnancy.breedingAttemptId),pregnancyPremium=pregnancy?Math.min(intrinsic*.15,intrinsic*.04+Number(contract?.fee||0)/100*.2):0;
+ return {evidence,consistency,quality,future,clinical,breedingPremium:breeding,pregnancyPremium,segment,rawTarget:Math.max(1000,Math.min(cap,intrinsic+racing+breeding+pregnancyPremium)),ceiling:cap};
 }
 export function initializeAppraisal(w,h,{fresh=false}={}){
  if(h.marketAppraisal?.version===7&&!fresh)return h.marketAppraisal;
