@@ -1,6 +1,6 @@
 import { initializeRacingYears } from './racing-years.js';
 import { attachAuction, rotateAuctions } from './auction-catalog.js';
-import { renewCalendar } from './race-catalog.js';
+import { renewCalendar, ensureRaceTypeCoverage } from './race-catalog.js';
 import { initializeForm } from './form.js';
 import { initializeYoungstock } from './youngstock.js';
 import { initializeTraits } from './traits.js';
@@ -31,5 +31,6 @@ export function upgrade(w) {
   for(const country of Object.keys(COUNTRIES)){const count=w.jockeys.filter(j=>j.country===country).length;for(let n=count;n<64;n++)w.jockeys.push({id:`jockey-v4-${country}-${n}`,name:`${country} circuit rider ${n+1}`,country,age:21+n%30,start:55+n%14*3,pace:60+n%14*2,finish:50+n%14*3,fee:String(10000+n%14*5000),starts:0,wins:0});}
   if(previousSchema<6&&w.fixtures.length)renewCalendar(w,w.day);
   if(previousSchema<6&&Object.keys(w.horses).length)rotateAuctions(w);
+  if(w.fixtures.length)ensureRaceTypeCoverage(w);
   w.schema=RULES.schema;return w;
 }

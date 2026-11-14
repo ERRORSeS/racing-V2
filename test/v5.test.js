@@ -17,7 +17,7 @@ function foalFixture(w){const dam=player(w),sire=Object.values(w.horses).find(h=
 
 test('V4 73–76: four six-race meetings, juvenile routes, two-month preview, idempotent renewal and booked fixtures retained',()=>{
  const w=make(),local=w.fixtures.filter(f=>f.country==='USA'&&f.day<30);assert.equal(local.length,24);assert.equal(new Set(local.map(f=>f.meetingId)).size,4);assert.ok(local.filter(f=>f.classId==='maiden'&&f.maxAge===2).length>=4);
- const future=w.fixtures.find(f=>f.country==='USA'&&f.day>30),before=structuredClone(future);renewCalendar(w);assert.deepEqual(w.fixtures.find(f=>f.id===future.id),before);assert.equal(w.fixtures.filter(f=>!f.isAnnualMajor).length,384);
+ const future=w.fixtures.find(f=>f.country==='USA'&&f.day>30),before=structuredClone(future);renewCalendar(w);assert.deepEqual(w.fixtures.find(f=>f.id===future.id),before);assert.equal(w.fixtures.filter(f=>f.templateVersion===4).length,384);assert.ok(w.fixtures.some(f=>f.templateVersion===7&&f.classId==='handicap'));
  w.day=30;renewCalendar(w);assert.deepEqual(w.fixtures.find(f=>f.id===future.id),before);assert.equal(new Set(w.fixtures.map(f=>f.id)).size,w.fixtures.length);assert.ok(w.fixtures.some(f=>f.day>=60));assert.equal(new Set(w.calendarGenerationLog.map(l=>l.key)).size,w.calendarGenerationLog.length);
 });
 test('V5 118–120/129/131: starters remain two, require actual education, official birthday cannot bypass chronology',()=>{
