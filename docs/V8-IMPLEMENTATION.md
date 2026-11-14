@@ -38,3 +38,10 @@ The pre-existing release checklist still records older outstanding items such as
 - Added `test/v8-reproduction.test.js`, `scripts/check-v8-browser.cjs`: cases 212–239, long-run persistence and an additional unconfirmed-negative sale roundtrip regression.
 
 Validation also checks that a later scan cannot rewrite a past sale disclosure. Frozen-service and negative-conception branches preserve alternative registry restrictions and unknown/unconfirmed values through exact save roundtrips.
+
+## Recorded release checks
+
+- Full local regression run: **155 passed, 0 failed**.
+- Added afterward: unconfirmed unsuccessful-covering sale roundtrip passed; affected disclosure, migration, loss, shared-view and Guide cases passed again after final refinements.
+- Production build passed. Final Chromium runs passed both owned-stud and actual NPC-stud workflows, preserving day-0 cover/day-15 confirmation, fee, report and reload chronology.
+- Competitive `src/racing.js` and `src/random.js` have no changes in this PR. Long whole-world skips remain computationally heavier than the isolated reproductive simulation; the existing background worker/queued autosave flow stays in use.
