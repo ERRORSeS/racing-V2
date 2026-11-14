@@ -33,6 +33,7 @@ export function eligibility(w,h,f,options={}) {
   if(age(h,f.day)<f.minAge||age(h,f.day)>f.maxAge)return `Race age restriction: ${f.minAge}–${f.maxAge}.`;
   if(h.registryEligibility==='ineligible'||(h.registryEligibility==='alternative'&&w.settings.registryMode!=='alternative'))return 'Registration does not permit this entry.';
   const qualified=qualificationReason(w,h,f);if(qualified)return qualified;
+  if(w.travel?.some(t=>t.horseId===h.id&&['Reserved','InTransit','Acclimatizing'].includes(t.status)&&t.destination!==f.country&&f.day>=t.departureDay))return 'An active journey is taking this horse to another country.';
   if(h.arrivalDay>f.day||(h.location!==f.country&&!w.travel?.some(t=>t.horseId===h.id&&t.destination===f.country&&t.readyDay<=f.day&&['Reserved','InTransit','Acclimatizing'].includes(t.status)&&t.id===h.activeTransport)))return 'Transport this horse to the race country first.';
   if(f.day<=w.day&&(h.location!==f.country||h.arrivalDay>w.day||['InTransit','Reserved','Acclimatizing'].includes(h.travelState)))return 'Late arrival or acclimatization incomplete at race-day checks.';
   const conditions=f.conditions||{};
@@ -66,7 +67,7 @@ export function scratchRace(w,fixtureId,horseId) {
   ownedHorse(w,horseId);const f=w.fixtures.find(x=>x.id===fixtureId);if(!f||f.status!=='scheduled')throw Error('Race is no longer open.');
   const e=f.entries.find(x=>x.horseId===horseId);if(!e)throw Error('No entry to scratch.');f.entries=f.entries.filter(x=>x!==e);invalidateSchedule(w);event(w,'racing',`${w.horses[horseId].name} withdrawn from ${f.title}. Voluntary withdrawal fees retained.`,horseId);
 }
-export function travel(w,horseId,country){return bookTravel(w,horseId,country);}
+export function travel(w,horseId,country,options={}){return bookTravel(w,horseId,country,null,false,options);}
 export function autoField(w,f,target=null) {
   const goal=Math.min(f.maxRunners,target??f.targetFieldSize??RULES.fieldSize);if(f.entries.length>=goal)return;ensureJockeys(w,f,goal-f.entries.length);
   const candidates=scheduleIndex(w).npcHorses.filter(h=>!eligibility(w,h,f));
