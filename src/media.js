@@ -23,11 +23,13 @@ export function publishRace(w,r){
 export function publishEvent(w,e){
  w.news??=[];let category=null,headline=e.text,related=[];
  const h=w.horses[e.horseId];
+ if(e.type==='valuation'&&h){const value=h.valuationHistory?.at(-1);if(value?.resultId&&w.results[value.resultId]?.classId==='g1'){category='Market';headline=e.text;}}
  if(e.type==='birth'&&h){const parents=[w.horses[h.sire],w.horses[h.dam]].filter(p=>famousHorse(w,p,e.day));if(parents.length){category='Famous Bloodlines';related=parents.map(p=>p.id);headline=`${h.name} born from the family of ${parents.map(p=>p.name).join(' and ')}`;}}
  if(e.type==='ownership'&&h){const sale=w.listings?.find(l=>l.horseId===h.id&&l.sold&&l.saleDay===e.day);if(sale&&BigInt(sale.salePrice)>=100000000n)category='Exceptional Sale';}
  if(e.type==='life'&&(famousHorse(w,h,e.day)||e.text.includes('serious medical complication')))category='Famous Horses';
- if(!category||w.news.some(n=>n.id===`news-${e.id}`))return;
- w.news.push({id:`news-${e.id}`,day:e.day,category,country:h?.location||w.country,outlet:'Stable & Bloodline Gazette',headline,summary:e.text,body:e.text+(e.type==='birth'?' A notable pedigree is not an earned racing title for the newborn.':''),horseIds:[e.horseId,...related].filter(Boolean),resultId:null,sourceEventIds:[e.id],significance:7,editorialVersion:2,noteworthy:true,read:false,bookmarked:false});
+ const valuation=e.type==='valuation'?h?.valuationHistory?.at(-1):null,newsId=valuation?`news-valuation-${valuation.resultId}-${h.id}`:`news-${e.id}`;
+ if(!category||w.news.some(n=>n.id===newsId))return;
+ w.news.push({id:newsId,day:e.day,category,country:h?.location||w.country,outlet:'Stable & Bloodline Gazette',headline,summary:e.text,body:e.text+(e.type==='birth'?' A notable pedigree is not an earned racing title for the newborn.':''),horseIds:[e.horseId,...related].filter(Boolean),resultId:valuation?.resultId||null,sourceEventIds:[valuation?.id||e.id],significance:7,editorialVersion:2,noteworthy:true,read:false,bookmarked:false});
 }
 // Quiet months need no filler digest. The journal and race archive retain all routine events.
 export function monthlyDigest(w){}

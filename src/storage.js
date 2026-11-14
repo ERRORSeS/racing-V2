@@ -1,3 +1,4 @@
+import { initializeV7World } from './v7.js';
 import { patchBase, worldPatch, applyWorldPatch } from './world-patch.js';
 import { validateCareerTimeline, repairCareerTimelines } from './career-timeline.js';
 import { LOCI, incompatibleGenotypes } from './genetics.js';
@@ -13,6 +14,7 @@ export function validate(w){
  if(new Set(w.events.map(e=>e.id)).size!==w.events.length)throw Error('Duplicate event identity.');
  for(const e of w.events)if(e.horseId&&!w.horses[e.horseId])throw Error('Missing event horse.');
  if(w.settings?.eliteJuvenileCatalogChance!=null&&(!Number.isFinite(w.settings.eliteJuvenileCatalogChance)||w.settings.eliteJuvenileCatalogChance<0||w.settings.eliteJuvenileCatalogChance>1))throw Error('Invalid juvenile consignment frequency.');
+ if(w.settings?.maximumRacingCareerYears!=null&&(!Number.isInteger(w.settings.maximumRacingCareerYears)||w.settings.maximumRacingCareerYears<1||w.settings.maximumRacingCareerYears>5))throw Error('Racing career cap must be 1–5 years.');
  if(!w.settings||!['official','alternative'].includes(w.settings.registryMode)||!Number.isFinite(w.settings.injuryFrequency)||w.settings.injuryFrequency<0||w.settings.injuryFrequency>10)throw Error('Invalid world settings.');
  if(!Number.isInteger(w.journalClearedThrough)||w.journalClearedThrough<0||w.journalClearedThrough>w.events.length)throw Error('Invalid journal cursor.');
  for(const key of ['medical','visits','coverings','freezer','jockeys','staff','news','travel','awards','trackRecords','studBooks'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
@@ -26,6 +28,10 @@ export function validate(w){
   if(h.trainingIntensity!=null&&!['Rest','Light','Balanced','Intense'].includes(h.trainingIntensity)||h.protectRecovery!=null&&typeof h.protectRecovery!=='boolean')throw Error('Invalid training policy.');
   if(h.recoveryFatigueThreshold!=null&&(!Number.isFinite(h.recoveryFatigueThreshold)||h.recoveryFatigueThreshold<10||h.recoveryFatigueThreshold>70))throw Error('Invalid recovery fatigue threshold.');
   if(h.fatigueLog!=null&&(!Array.isArray(h.fatigueLog)||h.fatigueLog.some(d=>!Number.isSafeInteger(d.day)||!Number.isFinite(d.load)||d.load<0||!Number.isFinite(d.recovery)||d.recovery<0||!Array.isArray(d.sources))))throw Error('Invalid fatigue history.');
+  const d=h.racingDurability,mv=h.marketAppraisal;
+  if(!d||d.version!==7||!Number.isFinite(d.latentDurabilityScore)||d.latentDurabilityScore<0||d.latentDurabilityScore>100||!Number.isFinite(d.individualRacingLongevity)||d.individualRacingLongevity<1||d.individualRacingLongevity>5||!Number.isSafeInteger(d.maximumCareerDurationDays)||d.maximumCareerDurationDays<360||d.maximumCareerDurationDays>1800||!Number.isFinite(d.cumulativeRacingStrain)||d.cumulativeRacingStrain<0||d.cumulativeRacingStrain>1000||!Number.isFinite(d.repetitiveStressIndex)||d.repetitiveStressIndex<0||d.repetitiveStressIndex>100||!Number.isFinite(d.chronicSusceptibility)||d.chronicSusceptibility<0||d.chronicSusceptibility>100||!Array.isArray(d.exposureHistory)||!Array.isArray(h.durabilityEvents))throw Error('Invalid V7 racing durability.');
+  const debut=h.starts.length?Math.min(...h.starts.map(s=>s.day)):null;if(d.firstRaceDate!==debut||d.absoluteRaceEndDate!==(debut==null?null:debut+d.maximumCareerDurationDays))throw Error('Racing window disagrees with actual debut.');
+  if(!mv||mv.version!==7||!/^\d+$/.test(mv.currentValue)||!/^\d+$/.test(mv.previousValue)||!Number.isFinite(mv.calibration)||mv.calibration<=0||!Array.isArray(mv.processedResultIds)||new Set(mv.processedResultIds).size!==mv.processedResultIds.length||!Array.isArray(h.valuationHistory))throw Error('Invalid canonical appraisal.');
   if(h.safeRacingYears!=null&&(!Number.isFinite(h.safeRacingYears)||h.safeRacingYears < -20||h.safeRacingYears>10))throw Error('Invalid safe racing-year reserve.');
   if(h.sire&&w.horses[h.sire].sex!=='colt'||h.dam&&w.horses[h.dam].sex!=='filly')throw Error('Invalid parent sex.');
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
@@ -58,12 +64,12 @@ export function validate(w){
 }
 function hash(s){let n=2166136261;for(const c of s)n=Math.imul(n^c.charCodeAt(0),16777619);return (n>>>0).toString(16);}
 export function encode(w){validate(w);const payload=JSON.stringify(w);if(/[<>]/.test(payload))throw Error('Use plain text without angle brackets in saved names or notes.');return JSON.stringify({format:'thoroughbred-racing',checksum:hash(payload),payload});}
-export function decode(text){const e=JSON.parse(text);if(e.format!=='thoroughbred-racing'||typeof e.payload!=='string'||hash(e.payload)!==e.checksum)throw Error('Save checksum failed. Restore a backup; your existing career is unchanged.');const w=JSON.parse(e.payload);if(/[<>]/.test(JSON.stringify(w)))throw Error('Save contains unsupported markup.');validateLegacy(w);upgrade(w);repairCareerTimelines(w);return validate(w);}
+export function decode(text){const e=JSON.parse(text);if(e.format!=='thoroughbred-racing'||typeof e.payload!=='string'||hash(e.payload)!==e.checksum)throw Error('Save checksum failed. Restore a backup; your existing career is unchanged.');const w=JSON.parse(e.payload);if(/[<>]/.test(JSON.stringify(w)))throw Error('Save contains unsupported markup.');validateLegacy(w);upgrade(w);repairCareerTimelines(w);initializeV7World(w);return validate(w);}
 export function save(w,storage=localStorage){const data=encode(w),old=storage.getItem(RULES.saveKey);if(old)storage.setItem(`${RULES.saveKey}.backup`,old);storage.setItem(RULES.saveKey,data);}
 export function load(storage=localStorage){const data=storage.getItem(RULES.saveKey);return data?decode(data):null;}
 
 function validateLegacy(w) {
- if(!w||![1,2,3,5,6].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
+ if(!w||![1,2,3,5,6,7].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
  // Full validation follows additive migration and the one-time career audit.
 }
 function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('first-light-careers',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
@@ -114,7 +120,7 @@ async function readSnapshot(data){
  }else if(data?.format==='first-light-packed-v2'){w=JSON.parse(await unpack(data.payload));w.storageRevision=data.revision;}
  else if(data?.format==='first-light-native-v1')w=data.world;
  else {w=decode(await unpack(data));w.storageRevision=0;}
- upgrade(w);repairCareerTimelines(w);validate(w);persistedBase={revision:w.storageRevision||0,manifest,base:patchBase(w)};return w;
+ const needsMigration=w.schema!==7||w.v7Migration?.version!==7;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,base:patchBase(w)};return w;
 }
 export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer(){const data=await dbRead('backup');if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}

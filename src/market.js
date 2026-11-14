@@ -1,3 +1,4 @@
+import { recordSaleEvidence } from './valuation.js';
 import { validateCareerTimeline } from './career-timeline.js';
 import { childrenOf } from './family-index.js';
 import { appraisal } from './valuation.js';
@@ -23,7 +24,7 @@ export function transfer(w,l,buyer,price) {
   if(buyer==='player')transact(w,-BigInt(price),'Bloodstock purchase',l.id);else {const o=w.owners[buyer];if(!o||BigInt(o.balance)<BigInt(price))throw Error('Buyer budget is insufficient.');o.balance=(BigInt(o.balance)-BigInt(price)).toString();}
   if(seller==='player')transact(w,BigInt(price),'Bloodstock sale',l.id);else w.owners[seller].balance=(BigInt(w.owners[seller].balance||'0')+BigInt(price)).toString();
   scratchEntries(w,h,'ownership transfer');h.owner=buyer;l.sold=true;l.buyer=buyer;l.salePrice=String(price);l.saleDay=w.day;l.status='sold';l.closed=true;h.ownership.push({owner:buyer,day:w.day,price:String(price),seller});
-  event(w,'ownership',`${h.name} sold by ${w.owners[seller].name} to ${w.owners[buyer].name} for ${(BigInt(price)/100n).toString()} USD.`,h.id);
+  recordSaleEvidence(w,h,l);event(w,'ownership',`${h.name} sold by ${w.owners[seller].name} to ${w.owners[buyer].name} for ${(BigInt(price)/100n).toString()} USD.`,h.id);
 }
 export function buy(w,listingId) {
   const l=w.listings.find(x=>x.id===listingId);if(!l||l.sold||l.closed||l.kind==='auction')throw Error('Private listing unavailable.');transfer(w,l,'player',l.price);

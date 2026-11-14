@@ -27,3 +27,5 @@ The pre-existing Claiming category has published claim prices; automated post-ra
 - Every type is exposed in the filter and the guide shows the requested order.
 - Browser: migrated second month exposes all ten types, including Circuit Handicap; 201 all-country cards span five pages; navigation and guide work without page errors.
 - Production build passed. Full-suite results are recorded in the pull request.
+
+The later V7 lifecycle, market and expanded 2–4 progression work is described in [V7-IMPLEMENTATION.md](V7-IMPLEMENTATION.md).

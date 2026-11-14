@@ -41,7 +41,7 @@ test('Race-type controls expose each category and filter cards before pagination
  const html=content(w,state);
  for(const [id,label]of OFFICIAL_RACE_TYPES){assert.ok(html.includes(`value="${id}"`));assert.ok(html.includes(label));}
  assert.ok(html.includes('Circuit Handicap'));assert.ok(!html.includes('class="fixture"><summary><strong>Horizon Juvenile Maiden'));
- assert.ok(html.includes('1 matching fixtures'));
+ assert.ok(html.includes('2 matching fixtures'));
  assert.ok(raceLevelGuideHTML().includes(RACE_PROGRESSION));
  const all=content(w,{...state,raceCountry:'All',raceType:'All'});assert.ok(all.includes('page 1 of'));assert.ok(all.includes('data-action="next"'));
 });

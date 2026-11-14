@@ -1,3 +1,4 @@
+import { recordMaterialValue } from './valuation.js';
 import { RULES, clamp } from './rules.js';
 import { integer } from './random.js';
 import { ownedHorse, charge, event } from './core.js';
@@ -14,5 +15,5 @@ export function inspect(w,horseId) {
   const potential=round(Object.values(h.potential).reduce((a,b)=>a+b,0)/Object.keys(h.potential).length/10+noise());
   const mean=Math.round((conformation+condition+pedigree+potential)/4*100)/100;
   h.inspection={day:w.day,scores:{conformation,condition,pedigree,potential},mean,grade:grade(mean),report:'Fictional breeding-stock inspection. Pedigree score assesses documentation and recorded family performance, never biological purity. Four marks are rounded to one decimal, mean to two decimals before grading.'};
-  event(w,'registry',`${h.name}: one lifetime inspection completed, ${h.inspection.grade}, mean ${mean.toFixed(2)}.`,h.id);return h.inspection;
+  event(w,'registry',`${h.name}: one lifetime inspection completed, ${h.inspection.grade}, mean ${mean.toFixed(2)}.`,h.id);recordMaterialValue(w,h,'Verified breeding-stock inspection',`inspection:${h.id}`);return h.inspection;
 }

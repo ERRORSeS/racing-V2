@@ -1,7 +1,7 @@
 // Completed races and these histories are append-only. Transfer additions and
 // mutable records, rather than cloning every old replay and training log.
 const ROOT_HISTORY=['events','ledger','sessions'];
-const HORSE_HISTORY=['starts','ownership','soundnessHistory'];
+const HORSE_HISTORY=['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory'];
 export function patchBase(w){return {
  lengths:Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].length])),
  horseLengths:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(HORSE_HISTORY.map(key=>[key,h[key]?.length||0]))])),
