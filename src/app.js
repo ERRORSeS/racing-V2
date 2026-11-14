@@ -1,3 +1,4 @@
+import { bookPregnancyScan,setBroodmareCare,reviewReproductiveRecovery } from './reproduction.js';
 import { renewCalendar } from './race-catalog.js';
 import { editDurability, initializeDurability, completeRacingCareer } from './durability.js';
 import { refreshMaterialValue } from './valuation.js';
@@ -80,6 +81,8 @@ app.addEventListener('click',async e=>{
   if(!world&&a==='restore'){try{await autosaves.flush();const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
+  if(a==='reproductive-profile'){openHorse(id);state.profileTab='Breeding';render();return;}
+  if(a==='choose-stud'){state.sireId=id;state.tab='Breeding';state.selected=null;render();return;}
   if(a==='medical-profile'){openHorse(id);state.profileTab='Medical';render();return;}
   if(a==='youngstock-profile'){openHorse(id);state.profileTab='Youngstock & Starting';render();return;}
   if(a==='market-tab'){state.marketTab=id;state.page=0;state.query='';render();return;}
@@ -106,6 +109,10 @@ app.addEventListener('click',async e=>{
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
   const actions={
+    'pregnancy-scan':n=>bookPregnancyScan(n,id),
+    'broodmare-care':n=>setBroodmareCare(n,id),
+    'foaling-watch':n=>setBroodmareCare(n,id,true),
+    'reproductive-clearance':n=>reviewReproductiveRecovery(n,id),
     'repair-calendar':n=>{renewCalendar(n);state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;},
     'medical-decision':n=>medicalDecision(n,id,b.dataset.choice),
     interview:n=>respondToPress(n,id,b.dataset.tone),

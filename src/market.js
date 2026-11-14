@@ -1,3 +1,4 @@
+import { pregnancySummary } from './reproduction.js';
 import { recordSaleEvidence } from './valuation.js';
 import { validateCareerTimeline } from './career-timeline.js';
 import { childrenOf } from './family-index.js';
@@ -23,7 +24,7 @@ export function transfer(w,l,buyer,price) {
   if(seller!==l.seller)throw Error('Seller no longer owns this horse.');if(buyer===seller)throw Error('Cannot buy your own listing.');
   if(buyer==='player')transact(w,-BigInt(price),'Bloodstock purchase',l.id);else {const o=w.owners[buyer];if(!o||BigInt(o.balance)<BigInt(price))throw Error('Buyer budget is insufficient.');o.balance=(BigInt(o.balance)-BigInt(price)).toString();}
   if(seller==='player')transact(w,BigInt(price),'Bloodstock sale',l.id);else w.owners[seller].balance=(BigInt(w.owners[seller].balance||'0')+BigInt(price)).toString();
-  scratchEntries(w,h,'ownership transfer');h.owner=buyer;l.sold=true;l.buyer=buyer;l.salePrice=String(price);l.saleDay=w.day;l.status='sold';l.closed=true;h.ownership.push({owner:buyer,day:w.day,price:String(price),seller});
+  l.maternityDisclosureAtSale=structuredClone(pregnancySummary(w,h));l.maternityRights='Pregnancy follows the mare; foal owner is mare owner at birth, breeder of record stays as contracted.';scratchEntries(w,h,'ownership transfer');h.owner=buyer;l.sold=true;l.buyer=buyer;l.salePrice=String(price);l.saleDay=w.day;l.status='sold';l.closed=true;h.ownership.push({owner:buyer,day:w.day,price:String(price),seller});
   recordSaleEvidence(w,h,l);event(w,'ownership',`${h.name} sold by ${w.owners[seller].name} to ${w.owners[buyer].name} for ${(BigInt(price)/100n).toString()} USD.`,h.id);
 }
 export function buy(w,listingId) {

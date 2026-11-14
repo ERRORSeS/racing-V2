@@ -58,6 +58,9 @@ export function validate(w){
  for(const a of w.awards)if(!w.horses[a.horseId]||a.evidence.some(id=>!w.results[id]))throw Error('Award has missing evidence.');
  for(const point of w.qualifyingPoints||[])if(!w.horses[point.horseId]||!w.results[point.resultId]||!Number.isInteger(point.year)||!Number.isInteger(point.points)||point.points<=0)throw Error('Invalid qualification evidence.');
  for(const auction of w.auctionEvents||[])if(!Array.isArray(auction.listingIds)||auction.listingIds.some(id=>!listingIds.has(id)))throw Error('Invalid auction catalog reference.');
+ const activePregnancies=new Set(),attemptIds=new Set((w.breedingAttempts||[]).map(a=>a.id));
+ for(const key of ['breedingAttempts','pregnancies','pregnancyScans','studContracts','reproductiveEvents'])if(w[key]&&new Set(w[key].map(x=>x.id)).size!==w[key].length)throw Error('Duplicate reproductive record.');
+ for(const p of w.pregnancies||[]){if(!w.horses[p.mareId]||!w.horses[p.sireId]||!attemptIds.has(p.breedingAttemptId)||p.liveFoalId&&!w.horses[p.liveFoalId])throw Error('Invalid pregnancy relationship.');if(!['foaled','lost'].includes(p.status)){if(activePregnancies.has(p.mareId))throw Error('Multiple active pregnancies for one mare.');activePregnancies.add(p.mareId);}}
  for(const c of w.coverings)if(!w.horses[c.damId]||!w.horses[c.sireId]||c.foalId&&!w.horses[c.foalId])throw Error('Invalid covering.');
  for(const b of w.freezer)if(!w.horses[b.sireId]||!Number.isInteger(b.doses)||b.doses<0||!Number.isFinite(b.viability))throw Error('Invalid freezer stock.');
  return w;
@@ -120,7 +123,7 @@ async function readSnapshot(data){
  }else if(data?.format==='first-light-packed-v2'){w=JSON.parse(await unpack(data.payload));w.storageRevision=data.revision;}
  else if(data?.format==='first-light-native-v1')w=data.world;
  else {w=decode(await unpack(data));w.storageRevision=0;}
- const needsMigration=w.schema!==7||w.v7Migration?.version!==7;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,base:patchBase(w)};return w;
+ const needsMigration=w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,base:patchBase(w)};return w;
 }
 export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer(){const data=await dbRead('backup');if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}

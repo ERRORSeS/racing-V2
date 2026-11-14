@@ -25,6 +25,7 @@ export function feedWarnings(h, day) {
   if(h.feed==='Performance'&&h.status==='retired')warnings.push('Performance feed is mismatched to an inactive retiree.');
   if(h.feed==='High Energy'&&h.temperament<40)warnings.push('High-energy feed can overstimulate this spirited horse.');
   if(h.feed==='Weight Gain'&&h.condition>=5)warnings.push('Weight gain is unnecessary at the current body condition.');
+  if(h.pregnancy&&['Performance','High Energy'].includes(h.feed))warnings.push('Covered/pregnant mares need stage-appropriate feed and safe light activity.');
   if(h.feed==='Broodmare'&&!h.pregnancy&&!h.brood)warnings.push('Broodmare feed is intended for breeding mares.');
   if(h.turnout<4)warnings.push('Limited turnout increases stress.');
   if(h.gear.fit<70)warnings.push('Equipment needs a refit.');
@@ -86,6 +87,7 @@ export function exposure(w,h,context,details={}) {
   return null;
 }
 export function train(w,h,manual=false,activity=null) {
+ if(h.pregnancy&&activity&&!['Light exercise','Rest'].includes(activity))throw Error('Pregnancy restricts serious racing work; choose light exercise or rest under veterinary clearance.');
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
  if(h.youngstock&&h.status==='active'&&!h.medicalCase&&!(h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage))){
   if(chronologicalDays(h,w.day)<720)return educationSession(w,h);

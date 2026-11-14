@@ -1,3 +1,4 @@
+import { initializeReproduction } from './reproduction.js';
 import { initializeDurability } from './durability.js';
 import { initializeRacingYears } from './racing-years.js';
 import { attachAuction, rotateAuctions } from './auction-catalog.js';
@@ -34,5 +35,5 @@ export function upgrade(w) {
   if(previousSchema<6&&Object.keys(w.horses).length)rotateAuctions(w);
   if(w.fixtures.length){ensureRaceTypeCoverage(w);ensureYoungProgression(w);openGradedRaceAges(w);}
   for(const f of w.fixtures)if(f.status==='scheduled'&&f.classId!=='maiden'&&f.grade!=='Maiden'&&f.conditions?.minWins>0){f.conditions.minPlacings??=f.conditions.minWins;delete f.conditions.minWins;}
-  w.schema=RULES.schema;return w;
+  initializeReproduction(w);w.schema=RULES.schema;return w;
 }
