@@ -160,6 +160,7 @@ export function scheduledTraining(w,h) {
 // Read-only explanation shared by the daily table and automation.
 export function trainingStatus(w,h){
  if(h.status==='deceased')return 'Deceased; career archived';
+ if(h.trainingIntensity==='Rest')return 'Rest intensity; automatic work paused';
  if(h.medicalCase)return `Veterinary restriction: ${w.medical.find(m=>m.id===h.medicalCase)?.diagnosis||'assessment required'}`;
  if(h.lastTrainingDay===w.day)return 'Completed today';
  if(!h.autoTrain&&!(h.youngstock?.autoEducation&&chronologicalDays(h,w.day)<720))return 'Program off';

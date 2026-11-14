@@ -71,7 +71,7 @@ async function dbRead(key){const db=await database();return new Promise((resolve
  const tx=db.transaction('snapshots','readonly'),store=tx.objectStore('snapshots'),r=store.get(key);let value,failure;
  r.onsuccess=()=>{
   if(r.result?.format==='first-light-manifest-v3'){
-   const manifest=r.result,records=new Array(manifest.chunks.length);value={format:'manifest-records-v3',revision:manifest.revision,records};
+   const manifest=r.result;if(!Array.isArray(manifest.chunks)||!manifest.chunks.length){failure=Error('Invalid snapshot manifest. Restore the previous autosave.');tx.abort();return;}const records=new Array(manifest.chunks.length);value={format:'manifest-records-v3',revision:manifest.revision,records};
    manifest.chunks.forEach((key,index)=>{const chunk=store.get(key);chunk.onsuccess=()=>{if(!chunk.result){failure=Error('Snapshot chunk missing. Restore the previous autosave.');tx.abort();return;}records[index]=chunk.result;};});
   }else if(r.result?.format==='first-light-pointer-v1'){const snapshot=store.get(r.result.slot);snapshot.onsuccess=()=>{value=snapshot.result;if(!value){failure=Error('Snapshot slot missing. Restore the previous autosave.');tx.abort();}};}
   else value=r.result;
@@ -91,7 +91,7 @@ export async function saveCareer(w,{replace=false}={}){
   previous.onsuccess=()=>{
    const old=previous.result,currentRevision=old?.revision??old?.world?.storageRevision??0;
    if(!replace&&(w.storageRevision||0)!==currentRevision){failure=Error('Another tab or newer career has saved changes. Export your unsaved work, then reload before continuing.');tx.abort();return;}
-   if(delta&&old?.format!=='first-light-manifest-v3'){failure=Error('Snapshot format changed in another tab. Reload before saving.');tx.abort();return;}
+   if(delta&&(old?.format!=='first-light-manifest-v3'||!Array.isArray(old.chunks))){failure=Error('Snapshot format changed in another tab. Reload before saving.');tx.abort();return;}
    nextRevision=currentRevision+1;
    const key='chunk-v3-'+(globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`),manifest={format:'first-light-manifest-v3',revision:nextRevision,chunks:[...(delta?old.chunks:[]),key]};
    try{
@@ -116,5 +116,5 @@ async function readSnapshot(data){
  else {w=decode(await unpack(data));w.storageRevision=0;}
  upgrade(w);repairCareerTimelines(w);validate(w);persistedBase={revision:w.storageRevision||0,manifest,base:patchBase(w)};return w;
 }
-export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy)await saveCareer(legacy);return legacy;}
+export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer(){const data=await dbRead('backup');if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
