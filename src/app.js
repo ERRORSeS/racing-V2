@@ -23,7 +23,7 @@ import { enterRace, scratchRace, travel } from './racing.js';
 import { listHorse, bid, withdrawListing, prePurchase } from './market.js';
 import { cover, collect, dispose, transferBatch } from './breeding.js';
 import { inspect } from './registry.js';
-import { saveCareer, loadCareer, backupCareer, encode, validate } from './storage.js';
+import { saveCareer, loadCareer, backupCareer, encode, validate, exportCareerBlob } from './storage.js';
 import { shell, setupView } from './ui.js';
 
 const app=document.querySelector('#app');mountGuide();
@@ -69,7 +69,7 @@ const advances=createAdvanceQueue(async days=>{
 async function advance(days){if(!Number.isSafeInteger(days)||days<1||days>36000){notice='Advance 1–36,000 days at a time.';render();return;}try{await advances.enqueue(days);}catch{/* Error and checkpoint already displayed. */}}
 window.addEventListener('pagehide',()=>{if(autosaves.dirty)autosaves.flush().catch(()=>{});});
 function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={starterEducation:f.get('starterEducation')||'Not started',stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
-function exportCareer(){const url=URL.createObjectURL(new Blob([encode(world)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function exportCareer(){const url=URL.createObjectURL(exportCareerBlob(world));const a=document.createElement('a');a.href=url;a.download=`first-light-day-${world.day}.jsonl`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function openHorse(id){if(state.selected)state.profileStack.push({id:state.selected,tab:state.profileTab});state.selected=id;state.profileTab='Overview';stopReplay();render();}
 app.addEventListener('click',async e=>{
   if(busy&&!advancing||actionPending)return;
@@ -78,7 +78,12 @@ app.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=b.dataset.id;
   if(a==='add'||a==='remove'||a==='regenerate-starters'){collectSetup();if(a==='regenerate-starters'){catalog=prepareStarters({country:draft.country,worldSeed:draft.seed,count:5});starters=prospectCards(catalog);notice='Five new ready prospects generated. Select the horses you want.';}else if(a==='add'){const expanded=prepareStarters({...catalog,count:catalog.count+1});const card=prospectCards(expanded).at(-1);catalog=expanded;starters.push({...card,selected:true});}else starters.splice(Number(b.dataset.index),1);render();return;}
   if(a==='cancel-setup'){settingUp=false;render();return;}
-  if(!world&&a==='restore'){try{await autosaves.flush();const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
+  if(a==='restore'){
+    if(busy||advancing||actionPending){notice='Wait for pending changes before restoring the previous autosave.';render();return;}
+    actionPending=true;
+    try{await autosaves.flush();const recovered=await backupCareer();world=(await workerRequest('restore',{world:recovered})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
+    catch(error){notice=error.message;}finally{actionPending=false;render();}return;
+  }
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
   if(a==='reproductive-profile'){openHorse(id);state.profileTab='Breeding';render();return;}
@@ -139,7 +144,7 @@ app.addEventListener('click',async e=>{
     scratch:n=>scratchRace(n,id,b.dataset.horseId),
     hire:n=>hire(n,id),dismiss:n=>dismiss(n,id),
     'review-break':n=>reviewBreak(n,id),dna:n=>dnaPanel(n,id),'cancel-travel':n=>cancelTravel(n,id),'read-news':n=>markNews(n,id,'read'),'bookmark-news':n=>markNews(n,id,'bookmark'),
-    restore:async n=>{await autosaves.flush();const revision=n.storageRevision;Object.assign(n,await backupCareer());n.storageRevision=revision;},
+
   };
   if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Changes applied. Autosave pending.',[id,b.dataset.horseId,world.listings.find(l=>l.id===id)?.horseId]);
 });
@@ -187,8 +192,8 @@ app.addEventListener('change',async e=>{
   if(e.target.matches('[data-choose]')){const counter=document.querySelector('#selected-count');if(counter)counter.textContent=`${document.querySelectorAll('[data-choose]:checked').length} horses selected`;return;}
   if(e.target.matches('[data-filter]')){state[e.target.name]=e.target.value;state.page=0;render();return;}
   if(e.target.matches('[data-pair]')){const form=e.target.closest('form'),f=new FormData(form);state.damId=f.get('damId');state.sireId=f.get('sireId');render();return;}
-  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{await autosaves.flush();const text=await file.text();if(world)exportCareer();world=(await workerRequest('import',{text})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
+  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{await autosaves.flush();if(world)exportCareer();world=(await workerRequest('import',{file})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
 });
 app.innerHTML='<main><p role="status">Loading your saved career…</p></main>';
-try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career<input id="import" type="file" accept=".json,application/json"></label><button data-action="restore">Restore previous autosave</button></main>`;}
+try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career<input id="import" type="file" accept=".json,.jsonl,application/json,application/x-ndjson"></label><button data-action="restore">Restore previous autosave</button></main>`;}
 if(world||!notice)render();
