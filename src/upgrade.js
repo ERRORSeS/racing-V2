@@ -1,3 +1,4 @@
+import { initializeRacingYears } from './racing-years.js';
 import { attachAuction, rotateAuctions } from './auction-catalog.js';
 import { renewCalendar } from './race-catalog.js';
 import { initializeForm } from './form.js';
@@ -18,7 +19,7 @@ export function upgrade(w) {
   for(const h of Object.values(w.horses)){
     h.autoRace??=!!w.settings.autoRace&&h.owner==='player';h.autoRaceInterval??=21;h.autoRaceMaxTier??='Auto';h.autoRaceGoal??='General';h.traits??=[];h.condition??=5;h.hoofHealth??=100;h.farrierDue??=w.day+45;h.clearance??='Race-Cleared';h.medicalCase??=null;h.autoCare??=true;h.autoVet??=true;h.autoFarrier??=true;h.gear??={bit:'Snaffle',accessory:'None',fit:100};h.location??=h.country;h.arrivalDay??=w.day;h.lastRaceDay??=null;h.retiredDay??=null;h.registryEligibility??='official';h.breedingMethod??='natural';h.brood??=false;h.pregnancy??=null;h.postFoalingUntil??=0;h.inspection??=null;h.ownership??=[{owner:h.owner,day:0,price:'0',seller:null}];h.studFee??='500000';h.coat.grayGene??=h.coat.gray?'Gg':'gg';h.coat.tobiano??=false;h.coat.tobianoGene??=h.coat.tobiano?'Tt':'tt';
   }
-  for(const h of Object.values(w.horses)){initializeDevelopment(w,h);initializeTraits(w,h);initializeYoungstock(w,h);initializeForm(w,h);const m=w.medical.find(m=>m.id===h.medicalCase);if(m&&h.irreversibleSoundnessLimit===100){h.irreversibleSoundnessLimit=Math.max(h.soundness,m.ceiling);h.potentialSoundnessCeiling=Math.max(h.soundness,Math.min(m.ceiling,h.potentialSoundnessCeiling));}}
+  for(const h of Object.values(w.horses)){initializeDevelopment(w,h);initializeTraits(w,h);initializeYoungstock(w,h);initializeForm(w,h);initializeRacingYears(w,h);const m=w.medical.find(m=>m.id===h.medicalCase);if(m&&h.irreversibleSoundnessLimit===100){h.irreversibleSoundnessLimit=Math.max(h.soundness,m.ceiling);h.potentialSoundnessCeiling=Math.max(h.soundness,Math.min(m.ceiling,h.potentialSoundnessCeiling));}}
   for(const m of w.medical){m.decision??=m.rehab?'treat_return':w.horses[m.horseId]?.owner==='player'?'pending':'treat_return';m.typeId??='custom';m.context??='recorded incident';}
   for(const h of Object.values(w.horses))if(h.status==='deceased'){h.medicalCase=null;h.brood=false;h.autoTrain=false;h.autoRace=false;}
   for(const l of w.listings){l.seller??=w.horses[l.horseId]?.owner;l.kind??='private';l.reserve??=l.price;l.bids??=[];l.closed??=false;l.day??=w.day;l.endDay??=w.day+7;}

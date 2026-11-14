@@ -1,3 +1,4 @@
+import { useRacingYears, racingYearsRisk } from './racing-years.js';
 import { INJURY_TYPES, chooseInjury } from './injuries.js';
 import { chronologicalDays, educationSession, startingSession, createStartingPlan, startingBlocker } from './youngstock.js';
 import { scheduleIndex } from './reservations.js';
@@ -39,7 +40,7 @@ export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain',contex
   if(!SEVERITIES[severity])throw Error('Unknown medical severity.');
   const [min,max]=SEVERITIES[severity], duration=integer(w,min,max);
   const m={id:id(w,'medical'),horseId:h.id,day:w.day,severity,diagnosis,minDays:min,maxDays:max,recoveryDay:w.day+duration,followUp:w.day+30,status:'active',context,typeId:typeId||'custom',prognosis:INJURY_TYPES[typeId]?.notes||'Veterinary reassessment determines the safe return outlook.',decision:h.owner==='player'?'pending':'treat_return',decisionDay:h.owner==='player'?null:w.day,rehab:h.owner!=='player',ceiling:severity==='Very Severe'?75:severity==='Severe'?90:100};
-  w.medical.push(m);h.medicalCase=m.id;h.clearance='No Work';h.soundness=Math.min(h.soundness,severity==='Easy'?75:severity==='Medium'?65:45);h.turnout=Math.min(2,h.turnout);h.exposureDay=w.day;
+  useRacingYears(w,h,{Easy:.05,Medium:.15,'More Than Medium':.35,Severe:1,'Very Severe':2.5}[severity]);w.medical.push(m);h.medicalCase=m.id;h.clearance='No Work';h.soundness=Math.min(h.soundness,severity==='Easy'?75:severity==='Medium'?65:45);h.turnout=Math.min(2,h.turnout);h.exposureDay=w.day;
   h.irreversibleSoundnessLimit=Math.min(h.irreversibleSoundnessLimit??100,m.ceiling);h.potentialSoundnessCeiling=Math.min(h.potentialSoundnessCeiling??100,severity==='Severe'?82:severity==='Very Severe'?65:100);h.soundnessHistory.push({day:w.day,current:h.soundness,ceiling:h.potentialSoundnessCeiling,structuralLimit:h.irreversibleSoundnessLimit,reason:diagnosis});
   scratchEntries(w,h,'veterinary restriction');event(w,'medical',`${h.name}: ${diagnosis}, ${severity}. Recovery estimate ${min}–${max} days; veterinary clearance required.`,h.id);
   if(severity==='Very Severe'&&w.settings.fatalities&&random(w)<(INJURY_TYPES[typeId]?.fatalRisk??.015)){h.status='deceased';h.clearance='No Work';m.status='closed';m.outcome='Fatal complication';h.medicalCase=null;h.brood=false;h.autoTrain=false;h.autoRace=false;h.autoRaceStatus='Deceased; registration off.';event(w,'life',`${h.name} died following a serious medical complication. Their history and family records are preserved.`,h.id);}
@@ -75,7 +76,7 @@ export function retire(w,horseId,breeding=true) {
 }
 export function exposure(w,h,context) {
   if(h.medicalCase||h.status==='deceased'||h.exposureDay===w.day)return;h.exposureDay=w.day;
-  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?5:context==='training'?2:1);
+  const healthMods=traitModifiers(h,{phase:'health'}).values;const risk=RULES.injuryRisk*(1-(healthMods.soundness||0)*3)*w.settings.injuryFrequency*(['race','training'].includes(context)?racingYearsRisk(h):1)*(1+h.fatigue/25+(100-h.hoofHealth)/20)*(context==='race'?5:context==='training'?2:1);
   if(random(w)<risk){const type=chooseInjury(w,context,random);return injure(w,h,type.severity,type.label,context,type.id);}
   return null;
 }
@@ -115,7 +116,7 @@ export function train(w,h,manual=false,activity=null) {
   if(headroom<.5)h.development.plateaus[key]=(h.development.plateaus[key]||0)+1;
  }
  h.workoutCounts[workout]=(h.workoutCounts[workout]||0)+1;h.fatigue=clamp(h.fatigue+plan.fatigue*(young?.5:1));h.fitness=clamp(h.fitness+(restricted?.015:workout==='Rest'?-.03:.3));
- h.lastTrainingDay=w.day;const primary=changes[0]||{skill:'handling',gain:0};
+ if(!restricted&&!young&&plan.fatigue>0)useRacingYears(w,h,plan.fatigue/13/360);h.lastTrainingDay=w.day;const primary=changes[0]||{skill:'handling',gain:0};
  const session={id:id(w,'session'),horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes,fatigue:h.fatigue,appliedTraits:modifiers.applied,report:changes.length?changes.map(c=>`${SKILL_DEFINITIONS[c.skill].label} ${c.gain>0?'+':''}${c.gain.toFixed(3)} (${c.status})`).join('; '):'Appropriate light maintenance; no competitive skill gain.'};
  if(h.owner==='player'||w.settings.debug)w.sessions.push(session);else w.sessions.push({id:session.id,horseId:h.id,day:w.day,skill:primary.skill,gain:primary.gain,activity:workout,changes:changes.map(c=>[c.skill,c.before,c.after,c.usableCeiling,c.status]),fatigue:h.fatigue});if(workout==='Gate schooling')observeTrait(w,h,'gate',session.id);if(workout==='Travel practice')observeTrait(w,h,'travel',session.id);if(!restricted)exposure(w,h,'training');return true;
 }

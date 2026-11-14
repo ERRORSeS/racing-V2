@@ -1,3 +1,4 @@
+import { childrenOf } from './family-index.js';
 import { appraisal } from './valuation.js';
 import { attachAuction } from './auction-catalog.js';
 import { scratchEntries } from './care.js';
@@ -8,7 +9,7 @@ import { career } from './career.js';
 export { appraisal } from './valuation.js';
 export function saleBlocker(w,h){
  if(!h||h.status==='deceased')return 'This horse is no longer available for sale.';
- if(h.youngstock?.weaning.stage!=='complete'||Object.values(w.horses).some(x=>x.dam===h.id&&x.youngstock?.weaning.stage!=='complete'&&x.owner===h.owner))return 'Complete gradual weaning before an individual sale; dependent mare–foal pairs cannot be separated.';
+ if(h.youngstock?.weaning.stage!=='complete'||h.sex==='filly'&&childrenOf(w,h.id).some(x=>x.dam===h.id&&x.youngstock?.weaning.stage!=='complete'&&x.owner===h.owner))return 'Complete gradual weaning before an individual sale; dependent mare–foal pairs cannot be separated.';
  return null;
 }
 export const bidIncrement=()=>100000n;

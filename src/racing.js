@@ -1,3 +1,5 @@
+import { useRacingYears } from './racing-years.js';
+import { ensureJockeys, addCircuitReserves } from './circuit-reserves.js';
 import { qualificationReason, commitQualification } from './championships.js';
 import { formFactor, recordForm } from './form.js';
 import { raceEducationBlocker } from './youngstock.js';
@@ -15,7 +17,7 @@ import { career } from './career.js';
 import { exposure } from './care.js';
 
 export { renewCalendar as schedule } from './race-catalog.js';
-export function eligibility(w,h,f) {
+export function eligibility(w,h,f,options={}) {
   if(!h||!f)return 'Choose a horse and fixture.';
   if(f.status!=='scheduled'||f.day<w.day)return 'This race is closed.';
   const educationReason=raceEducationBlocker(w,h,f);if(educationReason)return educationReason;
@@ -43,7 +45,7 @@ export function eligibility(w,h,f) {
   if(h.lastRaceDay!=null&&f.day-h.lastRaceDay<RULES.minRaceRest)return 'At least five days recovery between races.';
   if((f.entries||[]).some(e=>e.horseId===h.id))return 'Already entered.';
   if((f.entries||[]).length>=f.maxRunners)return 'Field is full.';
-  if((scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.fixtureId!==f.id&&Math.abs(b.day-f.day)<RULES.minRaceRest))return 'Conflicting race or recovery period.';
+  if(!options.ignoreBookings&&(scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.fixtureId!==f.id&&Math.abs(b.day-f.day)<RULES.minRaceRest))return 'Conflicting race or recovery period.';
   if(f.country==='Japan'&&h.gear.accessory==='Hood')return 'Hood is restricted by this simulated jurisdiction.';
   return null;
 }
@@ -60,6 +62,7 @@ export function scratchRace(w,fixtureId,horseId) {
 }
 export function travel(w,horseId,country){return bookTravel(w,horseId,country);}
 export function autoField(w,f,target=null) {
+  const goal=Math.min(f.maxRunners,target??f.targetFieldSize??RULES.fieldSize);if(f.entries.length>=goal)return;ensureJockeys(w,f,goal-f.entries.length);
   const candidates=scheduleIndex(w).npcHorses.filter(h=>!eligibility(w,h,f));
   candidates.sort((a,b)=>b.fitness-a.fitness||a.id.localeCompare(b.id));
   for(const h of candidates){if(f.entries.length>=Math.min(f.maxRunners,target??f.targetFieldSize??RULES.fieldSize))break;
@@ -69,6 +72,17 @@ export function autoField(w,f,target=null) {
     const entry={horseId:h.id,owner:h.owner,jockeyId:j.id,tactic:pick(w,TACTICS),carriedWeight:carriedWeight(h,f),gear:structuredClone(h.gear)};f.entries.push(entry);reserveInIndex(w,f,entry);
   }
 }
+function reassignNpcReserves(w,f){
+ if(!f.qualification&&f.conditions?.minRating==null)return;
+ for(const h of scheduleIndex(w).npcHorses){
+  if(f.entries.length>=(f.minStarters||2))break;
+  if(eligibility(w,h,f,{ignoreBookings:true}))continue;
+  const clashes=w.fixtures.filter(other=>other.id!==f.id&&other.status==='scheduled'&&Math.abs(other.day-f.day)<RULES.minRaceRest&&other.entries.some(e=>e.horseId===h.id));
+  if(!clashes.length||clashes.some(other=>other.isAnnualMajor||other.qualification||other.entries.length<=(other.minStarters||2)))continue;
+  for(const other of clashes)other.entries=other.entries.filter(e=>e.horseId!==h.id);
+  invalidateSchedule(w);event(w,'racing',`${h.name} reassigned by its NPC stable to ${f.title}; other fields retain their minimum runners.`,h.id);autoField(w,f,f.entries.length+1);
+ }
+}
 export function resolveRace(w,fixtureId) {
   const f=w.fixtures.find(x=>x.id===fixtureId);if(!f)throw Error('Unknown fixture.');
   if(f.resultId)return w.results[f.resultId];
@@ -76,8 +90,8 @@ export function resolveRace(w,fixtureId) {
   // Revalidate booked entries without treating their own booking as a clash.
   const booked=f.entries;f.entries=[];invalidateSchedule(w);
   for(const e of booked){const h=w.horses[e.horseId],reason=eligibility(w,h,f);if(reason){if(e.owner==='player'&&e.fee)transact(w,BigInt(e.fee),'Welfare scratch refund',f.id);event(w,'racing',`${h.name} scratched from ${f.title}: ${reason}`,h.id);}else{f.entries.push(e);reserveInIndex(w,f,e);}}
-  autoField(w,f);
-  if(f.entries.length<(f.minStarters||2)){f.status='canceled';f.phase='Canceled';f.cancelReason='Field below race-specific minimum after declarations and scratches';for(const e of f.entries)if(e.owner==='player'&&e.fee)transact(w,BigInt(e.fee),'Canceled race refund',f.id);event(w,'racing',`${f.title} canceled: insufficient eligible runners.`);return null;}
+  autoField(w,f);if(f.entries.length<(f.minStarters||2))reassignNpcReserves(w,f);if(f.entries.length<(f.minStarters||2)){addCircuitReserves(w,f,(f.targetFieldSize||8)-f.entries.length);autoField(w,f);}
+  if(f.entries.length<(f.minStarters||2)){f.day=w.day+7;f.phase='Rescheduled';f.reschedules=(f.reschedules||0)+1;f.delayReason='Awaiting enough legally eligible, sound runners; entry fees and nominations retained.';invalidateSchedule(w);event(w,'racing',`${f.title} moved seven days: awaiting an eligible field. Existing nominations and fees retained.`);return null;}
   f.status='running';f.phase='Running';
   f.fieldSnapshot={day:w.day,entries:structuredClone(f.entries)};
   const runners=f.entries.map((e,index)=>{
@@ -138,7 +152,7 @@ export function resolveRace(w,fixtureId) {
   highlights.push({time:finishers[0]?.time??clock,text:finishers.length?`${finishers[0].name} wins in ${finishers[0].time.toFixed(2)} seconds.${finishers[1]?` ${finishers[1].name} finishes second, ${finishers[1].margin.toFixed(2)} lengths behind.`:' No other horse finished.'}`:'No finishers; no winner or purse is awarded.'});
   const result={id:resultId,fixtureId:f.id,day:w.day,title:f.title,country:f.country,track:f.track,surface:f.surface,distance:f.distance,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,source:f.historical?'history seeded':'live',historical:!!f.historical,founderArchive:!!f.founderArchive,replayAvailable:!f.historical,events:raceEvents,rows,frames,highlights,incidents:runners.filter(r=>r.medical).map(r=>({horseId:r.h.id,medicalCase:r.medical.id,text:`Pulled up during the race: ${r.medical.diagnosis}; ${r.medical.severity}. Veterinary restrictions applied.`})),key:`${w.seed}:${f.id}:${w.rng}`};
   w.results[resultId]=result;f.resultId=resultId;f.status='completed';f.phase='Settled';
-  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:row.time===null?null:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});recordForm(w,h,h.starts.at(-1));h.lastRaceDay=w.day;h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
+  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:row.time===null?null:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});recordForm(w,h,h.starts.at(-1));if(!f.historical)useRacingYears(w,h,4/360);h.lastRaceDay=w.day;h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
     if(!f.historical){if(row.owner==='player')transact(w,BigInt(row.prize),'Race prize',resultId);else w.owners[row.owner].balance=(BigInt(w.owners[row.owner].balance||'0')+BigInt(row.prize)).toString();}
     const j=w.jockeys.find(x=>x.id===row.jockeyId);j.starts++;if(row.place===1)j.wins++;
     event(w,'racing',`${h.name}: ${row.place??'Pulled up'}/${rows.length} in ${f.title}, ${f.distance}m ${f.surface}.`,h.id);
@@ -152,7 +166,10 @@ export function fieldHealth(w,f){
  const report={day:w.day,currentEntries:f.entries.length,eligibleAvailable:eligible.length,minStarters:f.minStarters||2,targetStarters:f.targetFieldSize||8,maxStarters:f.maxRunners,remainingSlots:Math.max(0,f.maxRunners-f.entries.length),fieldHealth:f.entries.length>=(f.minStarters||2)?'Viable':f.entries.length+eligible.length>=(f.minStarters||2)?'Reserve available':'At risk',rejectionBreakdown,estimatedFieldAtDeclarations:Math.min(f.maxRunners,f.entries.length+eligible.length)};return report;
 }
 export function planNpcEntries(w){
- for(const f of w.fixtures.filter(f=>f.status==='scheduled'&&f.day>=w.day&&f.day-w.day<=10).sort((a,b)=>Number(!!b.qualifyingRoute||!!b.isAnnualMajor)-Number(!!a.qualifyingRoute||!!a.isAnnualMajor)||a.day-b.day)){
+ for(const f of w.fixtures.filter(f=>f.status==='scheduled'&&f.day>=w.day&&f.day-w.day<=10).sort((a,b)=>((b.isAnnualMajor?100:0)+(b.conditions?.minRating!=null?70:0)+(b.tier||0)*10)-((a.isAnnualMajor?100:0)+(a.conditions?.minRating!=null?70:0)+(a.tier||0)*10)||a.day-b.day)){
+   const target=Math.min(f.targetFieldSize||8,f.maxRunners-2);
+   if(f.entries.length>=target&&f.day-w.day>1)continue;
+   if(f.day-w.day<=2&&f.entries.length<target){autoField(w,f,target);if(f.entries.length<target)addCircuitReserves(w,f,target-f.entries.length);}
    // Keep at least two places open for player nominations before declarations.
    autoField(w,f,Math.min(f.targetFieldSize||8,f.maxRunners-2));
    f.fieldHealth=fieldHealth(w,f);f.phase=f.day-w.day<=1?'DeclarationsClosed':'EntriesOpen';

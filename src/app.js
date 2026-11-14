@@ -56,6 +56,7 @@ app.addEventListener('click',async e=>{
   if(a==='cancel-setup'){settingUp=false;render();return;}
   if(!world&&a==='restore'){try{await autosaves.flush();const recovered=await backupCareer();await saveCareer(recovered);world=recovered;notice='Previous autosave restored.';}catch(error){notice=error.message;}render();return;}
   if(!world)return;
+  if(a==='medical-profile'){openHorse(id);state.profileTab='Medical';render();return;}
   if(a==='youngstock-profile'){openHorse(id);state.profileTab='Youngstock & Starting';render();return;}
   if(a==='market-tab'){state.marketTab=id;state.page=0;state.query='';render();return;}
   if(a==='auction-event'){state.auctionEventId=id;state.auctionCategory=null;state.page=0;state.query='';render();return;}
