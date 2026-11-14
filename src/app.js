@@ -31,6 +31,7 @@ let advancing=false,advanceStatus='';
 let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
 const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Upcoming'};
+function resetBreedingSelection(){Object.assign(state,{damId:null,sireId:null,breedingMethod:'natural',breedingBatchId:'',coverNotice:''});}
 function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus,advanceStatus},notice,busy&&!advancing);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 let backgroundWorker=null,requestSequence=0;const workerRequests=new Map();
@@ -81,13 +82,13 @@ app.addEventListener('click',async e=>{
   if(a==='restore'){
     if(busy||advancing||actionPending){notice='Wait for pending changes before restoring the previous autosave.';render();return;}
     actionPending=true;
-    try{await autosaves.flush();const recovered=await backupCareer();world=(await workerRequest('restore',{world:recovered})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
+    try{await autosaves.flush();const recovered=await backupCareer();world=(await workerRequest('restore',{world:recovered})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
     catch(error){notice=error.message;}finally{actionPending=false;render();}return;
   }
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
   if(a==='reproductive-profile'){openHorse(id);state.profileTab='Breeding';render();return;}
-  if(a==='choose-stud'){state.sireId=id;state.tab='Breeding';state.selected=null;render();return;}
+  if(a==='choose-stud'){state.sireId=id;state.coverNotice='';state.tab='Breeding';state.selected=null;render();return;}
   if(a==='medical-profile'){openHorse(id);state.profileTab='Medical';render();return;}
   if(a==='youngstock-profile'){openHorse(id);state.profileTab='Youngstock & Starting';render();return;}
   if(a==='market-tab'){state.marketTab=id;state.page=0;state.query='';render();return;}
@@ -137,7 +138,7 @@ app.addEventListener('click',async e=>{
     rehab:n=>{ownedHorse(n,id);vet(n,id,'rehab');},
     clearance:n=>{ownedHorse(n,id);vet(n,id,'clear');},
     farrier:n=>{ownedHorse(n,id);farrier(n,id);},
-    retire:n=>retire(n,id),
+    retire:n=>{retire(n,id);state.coverNotice='';},
     inspect:n=>inspect(n,id),
     dispose:n=>dispose(n,id),
     withdraw:n=>withdrawListing(n,id),
@@ -149,14 +150,15 @@ app.addEventListener('click',async e=>{
   if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Changes applied. Autosave pending.',[id,b.dataset.horseId,world.listings.find(l=>l.id===id)?.horseId]);
 });
 app.addEventListener('submit',async e=>{
-  e.preventDefault();if(busy&&!advancing||actionPending)return;const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
+  e.preventDefault();const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;
+  if(busy&&!advancing||actionPending){notice='Wait for the current action to finish before submitting another change.';if(kind==='cover')state.coverNotice=notice;render();return;}
   if(kind==='setup'){
     collectSetup();busy=true;notice='Creating your stable and linked race/pedigree careers…';render();
-    try{const config={...draft,starterEducation:draft.starterEducation==='Creative race-ready'?'race_ready':draft.starterEducation==='Introduction started'?'introduction':'not_started',catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)};await autosaves.flush();const result=await workerRequest('create',{config});world=result.world;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];state.damId=null;state.sireId=null;notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
+    try{const config={...draft,starterEducation:draft.starterEducation==='Creative race-ready'?'race_ready':draft.starterEducation==='Introduction started'?'introduction':'not_started',catalog:{country:catalog.country,worldSeed:catalog.worldSeed,count:catalog.count},starters:starters.filter(s=>s.selected)};await autosaves.flush();const result=await workerRequest('create',{config});world=result.world;settingUp=false;state.raceCountry=world.country;state.tab='Dashboard';state.selected=null;state.resultId=null;state.profileStack=[];resetBreedingSelection();notice='Career created and saved.';}catch(error){notice=error.message;}finally{busy=false;render();}return;
   }
   if(!world)return;
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
-  if(advancing){notice='Time is advancing; changes resume after queued skips finish.';render();return;}
+  if(advancing){notice='Time is advancing; changes resume after queued skips finish.';if(kind==='cover')state.coverNotice=notice;render();return;}
   const actions={
     'durability-creative':n=>editDurability(n,ownedHorse(n,id),{score:Number(f.get('score')),years:Number(f.get('years'))}),
     intensity:n=>{const h=ownedHorse(n,id),intensity=f.get('intensity');if(!['Rest','Light','Balanced','Intense'].includes(intensity))throw Error('Choose a training intensity.');const threshold=Number(f.get('recoveryFatigueThreshold'));if(!Number.isFinite(threshold)||threshold<10||threshold>70)throw Error('Choose a recovery threshold from 10 to 70.');h.trainingIntensity=intensity;h.protectRecovery=f.has('protectRecovery');h.recoveryFatigueThreshold=threshold;},
@@ -185,14 +187,15 @@ app.addEventListener('submit',async e=>{
     cover:n=>cover(n,f.get('damId'),f.get('sireId'),f.get('method'),f.get('batchId')),
     collect:n=>collect(n,f.get('sireId')),batch:n=>transferBatch(n,id,f.get('owner'),f.get('country')),
   };
-  if(actions[kind])await update(actions[kind],undefined,kind==='settings'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
+  if(actions[kind])await update(actions[kind],kind==='cover'?'Covering recorded. Pregnancy is not yet confirmed; the first scan is due in about 15 days.':undefined,kind==='settings'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
+  if(kind==='cover'){state.coverNotice=notice;render();app.querySelector('[data-cover-feedback]')?.scrollIntoView({block:'center'});}
 });
 app.addEventListener('input',e=>{if(e.target.id==='search'){state.query=e.target.value;state.page=0;const pos=e.target.selectionStart;render();const input=app.querySelector('#search');input.focus();input.setSelectionRange(pos,pos);}});
 app.addEventListener('change',async e=>{
   if(e.target.matches('[data-choose]')){const counter=document.querySelector('#selected-count');if(counter)counter.textContent=`${document.querySelectorAll('[data-choose]:checked').length} horses selected`;return;}
   if(e.target.matches('[data-filter]')){state[e.target.name]=e.target.value;state.page=0;render();return;}
-  if(e.target.matches('[data-pair]')){const form=e.target.closest('form'),f=new FormData(form);state.damId=f.get('damId');state.sireId=f.get('sireId');render();return;}
-  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{await autosaves.flush();if(world)exportCareer();world=(await workerRequest('import',{file})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
+  if(e.target.matches('[data-pair]')){const form=e.target.closest('form'),f=new FormData(form);state.damId=f.get('damId');state.sireId=f.get('sireId');state.breedingMethod=f.get('method');state.breedingBatchId=f.get('batchId');state.coverNotice='';render();return;}
+  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{await autosaves.flush();if(world)exportCareer();world=(await workerRequest('import',{file})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
 });
 app.innerHTML='<main><p role="status">Loading your saved career…</p></main>';
 try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career<input id="import" type="file" accept=".json,.jsonl,application/json,application/x-ndjson"></label><button data-action="restore">Restore previous autosave</button></main>`;}

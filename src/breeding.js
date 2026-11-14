@@ -32,16 +32,23 @@ export function breedingReason(w,dam,sire) {
   const book=w.studBooks?.find(b=>b.sireId===sire.id&&b.year===Math.floor(w.day/360)+1);if(book&&book.reservations.length>=book.capacity)return 'Stallion book is full for this season.';
   return null;
 }
+export function coveringReason(w,dam,sire,method='natural',batchId=null){
+ const reason=breedingReason(w,dam,sire);if(reason)return reason;
+ if(!['natural','frozen'].includes(method))return 'Unknown breeding method.';
+ const batch=w.freezer.find(b=>b.id===batchId);
+ if(method==='frozen'){
+  if(w.settings.registryMode!=='alternative')return 'Frozen-semen AI cannot produce an official registered racing TB. Choose the fictional alternative registry to use a dose.';
+  if(!batch||batch.sireId!==sire.id||batch.owner!==dam.owner||batch.doses<1||batch.viability<50)return 'A viable owned semen dose for the selected stallion is required.';
+ }
+ if(method==='natural'&&(dam.location!==sire.location||dam.arrivalDay>w.day||sire.arrivalDay>w.day))return 'Natural service requires both horses settled at the same country/base; book travel first.';
+ const fee=sire.owner===dam.owner?'0':sire.studFee||'500000';
+ if(dam.owner==='player'&&!w.unlimited&&BigInt(w.balance)<BigInt(fee))return 'Insufficient funds for the selected stud service.';
+ return null;
+}
 export function cover(w,damId,sireId,method='natural',batchId=null,npc=false) {
   initializeReproduction(w);const dam=w.horses[damId],sire=w.horses[sireId];if(!npc)ownedHorse(w,damId);
-  const reason=breedingReason(w,dam,sire);if(reason)throw Error(reason);
-  if(!['natural','frozen'].includes(method))throw Error('Unknown breeding method.');
+  const reason=coveringReason(w,dam,sire,method,batchId);if(reason)throw Error(reason);
   const batch=w.freezer.find(b=>b.id===batchId);
-  if(method==='frozen'){
-    if(w.settings.registryMode!=='alternative')throw Error('Frozen-semen AI cannot produce an official registered racing TB. Choose the fictional alternative registry to use a dose.');
-    if(!batch||batch.sireId!==sireId||batch.owner!==dam.owner||batch.doses<1||batch.viability<50)throw Error('A viable owned semen dose is required.');
-  }
-  if(method==='natural'&&(dam.location!==sire.location||dam.arrivalDay>w.day||sire.arrivalDay>w.day))throw Error('Natural service requires both horses settled at the same country/base; book travel first.');
   const book=studBook(w,sire);
   const fee=sire.owner===dam.owner?'0':(sire.studFee||'500000');
   charge(w,dam,fee,'Stud service',sire.id);
