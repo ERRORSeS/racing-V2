@@ -16,7 +16,7 @@ test('All ten official race types occur in every country in each month of a full
   w.day=month*30;renewCalendar(w);
   for(const country of Object.keys(COUNTRIES)){
    const fixtures=w.fixtures.filter(f=>f.country===country&&f.day>=w.day&&f.day<w.day+30);
-   for(const [type]of OFFICIAL_RACE_TYPES)assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);
+   for(const [type]of OFFICIAL_RACE_TYPES){assert.ok(fixtures.some(f=>f.classId===type),`${country} month ${month+1}: missing ${type}`);assert.ok(fixtures.some(f=>f.classId===type&&f.minAge===2&&f.maxAge===4),`${country} month ${month+1}: missing ages 2–4 ${type}`);}
   }
  }
  assert.equal(new Set(w.fixtures.map(f=>f.id)).size,w.fixtures.length);

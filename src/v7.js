@@ -1,4 +1,4 @@
-import {initializeDurability,recordFirstStart,recordExposure,recordClinicalHistory,durabilityDay,completeRacingCareer} from './durability.js';
+import {initializeDurability,durabilityEvent,recordFirstStart,recordExposure,recordClinicalHistory,durabilityDay,completeRacingCareer} from './durability.js';
 import {initializeAppraisal,recordVerifiedStart,recordMaterialValue,refreshMaterialValue} from './valuation.js';
 import {event} from './core.js';
 export function initializeV7World(w,{fresh=false}={}){
@@ -20,5 +20,6 @@ export function settleV7Race(w,result){
 }
 export function monthlyV7Review(w,h){
  if(h.owner==='archive')return;
+ const p=initializeDurability(w,h),month=Math.floor(w.day/30);if(p.lastMonthlyReview!==month){p.lastMonthlyReview=month;durabilityEvent(w,h,'Monthly durability review',{cumulativeStrain:p.cumulativeRacingStrain,repetitiveStress:p.repetitiveStressIndex,workload30d:p.recentWorkload30d});}
  recordMaterialValue(w,h,'Monthly racing/breeding outlook',`month:${Math.floor(w.day/30)}`);
 }
