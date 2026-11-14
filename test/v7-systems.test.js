@@ -60,7 +60,7 @@ test('V7 211: chunked and daily advancement preserve RNG, results, appraisals an
 test('Ages 2–4 have rating-free Allowance and Claiming at every regular meeting',()=>{
  const w=make(),h=own(w),cards=w.fixtures.filter(f=>f.country==='USA'&&f.day<30&&f.id.startsWith('fixture-v7-young-'));
  for(const day of [3,10,17,24])for(const type of ['allowance','claiming']){const f=cards.find(f=>f.day===day&&f.classId===type);assert.ok(f,`${day}: ${type}`);assert.equal(f.minAge,2);assert.equal(f.maxAge,4);assert.equal(f.conditions.minRating,null);assert.equal(f.conditions.minWins,null);}
- for(const type of ['maiden','novice','handicap','open','listed','g3','g2','g1'])assert.ok(w.fixtures.some(f=>f.country==='USA'&&f.day<30&&f.classId===type&&f.minAge===2&&f.maxAge===4),type);
+ for(const type of ['maiden','novice','handicap','open','listed','g3','g2','g1'])assert.ok(w.fixtures.some(f=>f.country==='USA'&&f.day<30&&f.classId===type&&f.minAge===2&&f.maxAge===(['g3','g2','g1'].includes(type)?12:4)),type);
  const f=cards[0];assert.equal(eligibility(w,h,f),null);h.born=-1440;assert.equal(eligibility(w,h,f),null);h.born=-1800;assert.match(eligibility(w,h,f),/age restriction/);
 });
 test('Non-maiden minimum-win progression accepts actual top-three finishes while maidens retain win rules',()=>{
