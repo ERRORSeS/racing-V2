@@ -20,3 +20,19 @@ test('Actual month-end advancement extends a recovered calendar beyond the origi
  const results=structuredClone(w.results);advanceWorld(w,1);
  assert.equal(w.day,60);assertHorizon(w);assert.deepEqual(w.results,results);validate(w);
 });
+
+test('Year 2 month 8 restores meetings even without generation-log metadata',()=>{
+ for(const logs of [[],[{key:'legacy-calendar',templateVersion:3}]]){
+  const w=make();w.day=570;w.calendarGenerationLog=logs;const original=structuredClone(w.fixtures),rng=w.rng;
+  assert.equal(ensureCalendarHorizon(w),true);assertHorizon(w);assert.equal(w.rng,rng);
+  for(const f of original)assert.deepEqual(w.fixtures.find(x=>x.id===f.id),f);
+  for(const raceMonth of ['Upcoming','Current','Next'])for(const country of Object.keys(COUNTRIES))assert.ok(content(w,{tab:'Races',raceCountry:country,raceMonth,raceAge:'All',raceType:'All',page:0}).includes('class="fixture"'),`${country} ${raceMonth}`);
+  assert.equal(ensureCalendarHorizon(w),false);
+ }
+});
+test('Year 2 month 8 quiet final days show the next races and offer filter reset and repair',()=>{
+ const w=make();w.day=597;w.calendarGenerationLog=[];ensureCalendarHorizon(w);
+ const state={tab:'Races',raceCountry:'USA',raceAge:'All',raceType:'All',page:0};
+ for(const raceMonth of [undefined,'Upcoming','Current']){const html=content(w,{...state,raceMonth});assert.ok(html.includes('class="fixture"'));assert.ok(html.includes('data-action="reset-race-filters"'));assert.ok(html.includes('data-action="repair-calendar"'));}
+ assert.ok(content(w,{...state,raceMonth:'Current'}).includes('Showing the next scheduled races.'));
+});
