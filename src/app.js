@@ -73,7 +73,8 @@ app.addEventListener('click',async e=>{
   if(a==='replay-reset'){stopReplay();state.replayFrame=0;render();return;}
   if(a==='replay-next'){stopReplay();state.replayFrame=Math.min(state.replayFrame+1,world.results[state.resultId].frames.length-1);render();return;}
   if(a==='journal-archive'){state.journalArchive=!state.journalArchive;render();return;}
-  if(a==='breeder-stock'){state.breeder=id;state.query='';state.page=0;render();return;}
+  if(a==='breeder-stock'){state.breeder=id;state.query='';state.countryFilter='All';state.sexFilter='All';state.page=0;render();document.querySelector('main')?.scrollIntoView({block:'start'});return;}
+  if(a==='breeder-directory'){state.breeder=null;render();return;}
   if(a==='export'){exportCareer();return;}
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}

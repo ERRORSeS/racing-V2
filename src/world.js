@@ -2,7 +2,7 @@ import { rotateAuctions } from './auction-catalog.js';
 import { autoRegister } from './auto-register.js';
 import { updateForm } from './form.js';
 import { youngstockDay, initializeYoungstock, createStartingPlan } from './youngstock.js';
-import { updateStudFees } from './stud.js';
+import { updateStudFees, recruitAccomplishedSires } from './stud.js';
 import { seedHistory, seedPedigreeCareers } from './history.js';
 import { FIELD_DENSITY } from './race-rules.js';
 import { processTravel } from './travel.js';
@@ -64,7 +64,7 @@ export function createWorld(config) {
    if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
    if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
   }
-  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
+  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');return w;
 }
 import { cents } from './rules.js';
 function setInitialBalance(w,balance){w.balance=cents(balance);}
@@ -103,7 +103,7 @@ export function advanceWorld(w,days) {
     if(w.day%30===0){
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);
       for(const s of w.staff)if(s.owner==='player'){try{transact(w,-BigInt(s.wage),'Staff wages',s.id);}catch{event(w,'staff',`Wage unpaid for ${s.name}; service suspended.`);s.owner='unpaid';}}
-      npcMonth(w);rotateAuctions(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
+      npcMonth(w);rotateAuctions(w);recruitAccomplishedSires(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
 
     }
   }
