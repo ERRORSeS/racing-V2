@@ -91,10 +91,10 @@ async function dbRead(key){const db=await database();return new Promise((resolve
 export async function pack(text){if(typeof CompressionStream==='undefined')return text;return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob();}
 export async function unpack(data){if(typeof data==='string')return data;return new Response(data.stream().pipeThrough(new DecompressionStream('gzip'))).text();}
 let persistedBase=null;
-export async function saveCareer(w,{replace=false}={}){
+export async function saveCareer(w,{replace=false,preparedPatch=null}={}){
  validate(w);
  const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest;
- const records=[];for(const part of snapshotParts(delta?worldPatch(w,persistedBase.base):w,{delta})){const {payload,...meta}=part;records.push({...meta,checksum:snapshotHash(payload),payload:await pack(payload)});}
+ const records=[];for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,persistedBase.base)):w,{delta})){const {payload,...meta}=part;records.push({...meta,checksum:snapshotHash(payload),payload:await pack(payload)});}
  const db=await database();let nextRevision;
  try{await new Promise((resolve,reject)=>{
   const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');let failure;

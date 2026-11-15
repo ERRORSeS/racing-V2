@@ -1,5 +1,5 @@
 import { ensureCalendarHorizon } from './race-catalog.js';
-import { patchBase, worldPatch } from './world-patch.js';
+import { patchBase, worldPatch, applyWorldPatch } from './world-patch.js';
 import { recruitAccomplishedSires, updateStudFees } from './stud.js';
 import { seedPedigreeCareers } from './history.js';
 import { advanceWorld, createWorld } from './world.js';
@@ -17,6 +17,11 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
     if(changed)await saveCareer(world);
    }
    residentWorld=world;send({requestId:data.requestId,world});return;
+  }
+  if(data.type==='save-patch'){
+   if(!residentWorld){send({requestId:data.requestId,needsBase:true});return;}
+   if(data.expectedRevision!==(residentWorld.storageRevision||0))throw Error('Simulation snapshot differs from the last saved revision. Reload before saving.');
+   const next=applyWorldPatch(residentWorld,data.patch);const revision=await saveCareer(next,{preparedPatch:data.patch});residentWorld=next;send({requestId:data.requestId,saved:true,revision});return;
   }
   if(data.type==='save'){const revision=await saveCareer(data.world);residentWorld=data.world;send({requestId:data.requestId,saved:true,revision});return;}
   const world=data.type==='create'?createWorld(data.config):data.type==='import'?(data.file?await importCareerFile(data.file):decode(data.text)):data.world||residentWorld;
@@ -36,7 +41,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    }
   }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'||data.type==='restore'});
   residentWorld=world;send(base?{requestId:data.requestId,patch:worldPatch(world,base),saved:true}:{requestId:data.requestId,world,saved:true});
- }catch(error){let committed=null;if(checkpointWritten){try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(data.type==='import'?previousResident:null);send({requestId:data.requestId,error:error.message,committed});}
+ }catch(error){let committed=null;if(checkpointWritten){try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(['import','save-patch'].includes(data.type)?previousResident:null);send({requestId:data.requestId,error:error.message,committed});}
 }
 function yieldTask(){if(globalThis.scheduler?.yield)return scheduler.yield();return new Promise(resolve=>{const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(null);});}
 

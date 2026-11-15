@@ -1,3 +1,4 @@
+import { medicalById } from './clinical-index.js';
 import { initializeDurability, durabilityDay, recordExposure, recordClinicalHistory, recordRetirement } from './durability.js';
 import { assessExposure } from './injury-risk.js';
 import { refreshMaterialValue } from './valuation.js';
@@ -53,7 +54,7 @@ export function injure(w,h,severity='Easy',diagnosis='Soft-tissue strain',contex
 }
 export function vet(w,horseId,action='examine') {
   const h=w.horses[horseId];if(!h||h.status==='deceased')throw Error('A live horse is required.');
-  const m=w.medical.find(x=>x.id===h.medicalCase);
+  const m=medicalById(w,h.medicalCase);
   if(action==='rehab'&&!m)throw Error('No medical case requires rehabilitation.');
   if(action==='clear'&&m?.decision==='pending')throw Error('Choose a treatment or retirement plan before return clearance.');
   if(action==='clear'&&m&&m.ceiling<80)throw Error('Permanent racing restriction: discuss comfort care and retirement.');
@@ -135,7 +136,7 @@ export function dailyCare(w,h) {
   const warnings=feedWarnings(h,w.day);h.acuteStress=warnings.length>=2?'Care incompatibility':h.fatigue>70?'Excessive workload':null;
   h.condition=clamp(h.condition+(traitModifiers(h,{phase:'care'}).values.condition||0)*.05+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
   if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(traitModifiers(h,{phase:'care'}).values.hoof||0)*3));
-  const m=w.medical.find(x=>x.id===h.medicalCase);
+  const m=medicalById(w,h.medicalCase);
   if(m&&m.status==='active'){
     const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(h.potentialSoundnessCeiling??m.ceiling,h.soundness+(m.decision==='pending'?.025:m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1)*(1+(traitModifiers(h,{phase:'vet'}).values.veterinary||0)));
     if(w.day>=m.recoveryDay&&m.decision!=='pending'&&(h.status==='retired'||m.decision==='treat_comfort')){m.status='closed';m.outcome='Comfort-care recovery reviewed';h.medicalCase=null;h.clearance='Light Work';event(w,'medical',`${h.name}: comfort care reviewed; racing clearance has not been granted.`,h.id);}
