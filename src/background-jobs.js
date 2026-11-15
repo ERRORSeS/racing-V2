@@ -10,13 +10,12 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
  let checkpointWritten=false,base=null;
  try{
   if(data.type==='load'){
-   const world=await loadCareer();
-   if(world){let changed=ensureCalendarHorizon(world)||!!world.migrationNeedsSave;delete world.migrationNeedsSave;
-    if(!world.pedigreeHistoryVersion&&world.settings.historyYears>0){seedPedigreeCareers(world);changed=true;}
-    if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;changed=true;}
-    if(changed)await saveCareer(world);
-   }
-   residentWorld=world;send({requestId:data.requestId,world});return;
+   const onProgress=loading=>send({requestId:data.requestId,loading});let world=await loadCareer({onProgress,includeLegacy:false}),needsSave=false;
+   if(!world&&data.legacyText){onProgress({stage:'Reading legacy saved career'});world=decode(data.legacyText);world.storageRevision=0;needsSave=true;}
+   if(world){needsSave=ensureCalendarHorizon(world)||!!world.migrationNeedsSave||needsSave;delete world.migrationNeedsSave;}
+   // Startup is read-only: show the career before any migration write or optional
+   // historical simulation. The UI queues necessary writes after it is usable.
+   residentWorld=world;send({requestId:data.requestId,world,needsSave});return;
   }
   if(data.type==='save-patch'){
    if(!residentWorld){send({requestId:data.requestId,needsBase:true});return;}
@@ -32,10 +31,11 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    if(!world)throw Error('Reload the saved career before advancing.');
    if(data.expectedRevision!=null&&data.expectedRevision!==(world.storageRevision||0))throw Error('Simulation snapshot differs from the last saved revision. Reload before advancing.');
    if(!Number.isSafeInteger(data.days)||data.days<1||data.days>36000)throw Error('Advance 1–36,000 days at a time.');
+   if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;}
    for(let done=0;done<data.days;){
     const chunk=Math.min(cooperative?1:30,data.days-done);advanceWorld(world,chunk);
     if(world.settings.historyYears>0)seedPedigreeCareers(world);
-    await saveCareer(world);done+=chunk;checkpointWritten=true;
+    await saveCareer(world,{initialBase:base});done+=chunk;checkpointWritten=true;
     send({requestId:data.requestId,progress:{done,total:data.days,day:world.day}});
     if(cooperative)await yieldTask();
    }
