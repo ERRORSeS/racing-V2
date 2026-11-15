@@ -26,7 +26,9 @@ jobs:
         with:
           node-version: '24'
       - name: Engine, migration, genetics and guide regression tests
-        run: npm test
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: node --test --test-concurrency=1
       - name: Build static site
         run: npm run build
       - name: Configure Pages

@@ -1,3 +1,5 @@
+import {npcCampaign} from './npc-campaign.js';
+import {nameLimit} from './naming.js';
 import { initializeDurability } from './durability.js';
 import { initializeAppraisal } from './valuation.js';
 import { initializeRacingYears } from './racing-years.js';
@@ -24,9 +26,9 @@ export function horse(w,owner,country,options={},depth=0,born=-720){
 }
  initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);initializeRacingYears(w,h);initializeDurability(w,h).historyInitialized=true;h.safeRacingYears=Math.min(h.safeRacingYears,h.racingDurability.individualRacingLongevity,5);initializeAppraisal(w,h);
 
- updateFamily(w,h);return h;
+ updateFamily(w,h);if(!['player','archive'].includes(h.owner))npcCampaign(w,h);return h;
 }
-export function rename(w,horseId,newName){const h=w.horses[horseId];if(!h||h.owner!=='player')throw Error('Only owned horses may be renamed.');newName=newName.trim();if(!newName||/[<>]/.test(newName)||newName.length>18||Object.values(w.horses).some(x=>x.id!==h.id&&x.name.toLowerCase()===newName.toLowerCase()))throw Error('Use a unique registered name of 1–18 characters.');h.formerNames.push(h.name);h.name=newName;invalidateNames(w);event(w,'identity',`Registered name changed to ${newName}.`,h.id);}
+export function rename(w,horseId,newName){const h=w.horses[horseId];if(!h||h.owner!=='player')throw Error('Only owned horses may be renamed.');newName=newName.trim();if(!newName||/[<>]/.test(newName)||newName.length>nameLimit(w,h.country)||Object.values(w.horses).some(x=>x.id!==h.id&&x.name.toLowerCase()===newName.toLowerCase()))throw Error(`Use a unique name of 1–${nameLimit(w,h.country)} characters.`);h.formerNames.push(h.name);h.name=newName;invalidateNames(w);event(w,'identity',`Registered name changed to ${newName}.`,h.id);}
 export function transact(w,amount,category,source){const next=BigInt(w.balance)+BigInt(amount);if(!w.unlimited&&next<0n)throw Error('Insufficient funds.');w.balance=next.toString();w.ledger.push({id:id(w,'ledger'),day:w.day,amount:String(amount),category,source,balance:w.balance});}
 export function setBalance(w,value){const amount=cents(value);transact(w,BigInt(amount)-BigInt(w.balance),'Creative Balance Adjustment','settings');}
 export function phenotype(h,day=0){return phenotypeDescription(h,day);}

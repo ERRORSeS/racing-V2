@@ -18,7 +18,7 @@ test('Actual month-end advancement extends a recovered calendar beyond the origi
  const w=make();w.day=59;w.settings.injuryFrequency=0;
  for(const f of w.fixtures)if(f.status==='scheduled'&&f.day<w.day)f.status='canceled';
  const results=structuredClone(w.results);advanceWorld(w,1);
- assert.equal(w.day,60);assertHorizon(w);assert.deepEqual(w.results,results);validate(w);
+ assert.equal(w.day,60);assertHorizon(w);for(const [id,result]of Object.entries(results))assert.deepEqual(w.results[id],result);validate(w);
 });
 
 test('Year 2 month 8 restores meetings even without generation-log metadata',()=>{

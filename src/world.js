@@ -1,3 +1,4 @@
+import {campaignDay} from './npc-campaign.js';
 import { reproductionDay } from './reproduction.js';
 import { ensureCalendarHorizon } from './race-catalog.js';
 import { recordRetirement } from './durability.js';
@@ -62,7 +63,7 @@ export function createWorld(config) {
       const oldBase=h.coat.extension==='ee'?'chestnut':h.coat.agouti==='aa'?'black':'bay';
       if(opts.base!==oldBase&&opts.base!=='Random'){h.coat.extension=opts.base==='chestnut'?'ee':'EE';if(opts.base!=='chestnut')h.coat.agouti=opts.base==='black'?'aa':'AA';}
       const changes={};if(opts.base!==oldBase)changes.base=opts.base;if(opts.gray!==h.coat.gray)changes.gray=opts.gray;if(opts.tobiano!==h.coat.tobiano)changes.tobiano=opts.tobiano;if(opts.shade!==h.coat.shade)changes.shade=opts.shade;if(opts.face!==h.coat.face)changes.face=opts.face;if(Object.keys(changes).length)applyStarterOverrides(h,changes);
-      h.coat.shade=opts.shade;h.coat.face=opts.face;h.coat.gray=opts.gray;h.coat.grayGene=h.coat.gray?'Gg':'gg';h.coat.tobiano=opts.tobiano;h.coat.tobianoGene=h.coat.tobiano?'Tt':'tt';
+      h.coat.shade=opts.shade;h.coat.face=opts.face;h.coat.gray=opts.gray;h.coat.tobiano=opts.tobiano;
     }else h=horse(w,'player',config.country,opts,2);h.historyRecorded=true;if(opts.name&&opts.name!==h.name)rename(w,h.id,opts.name);event(w,'ownership',`${h.name} joins the stable as an unstarted two-year-old.`,h.id);
   }
   if(config.starterEducation==='race_ready'&&!config.creativeMode)throw Error('Already race-ready starters require creative setup.');
@@ -70,7 +71,7 @@ export function createWorld(config) {
    if(config.starterEducation==='introduction'){createStartingPlan(w,h);h.autoTrain=true;}
    if(config.starterEducation==='race_ready'){h.youngstock.starting.status='complete';h.youngstock.starting.step=10;h.youngstock.starting.completedDay=0;h.youngstock.starting.provenance='Creative setup: completed starting milestones';for(const m of h.youngstock.starting.milestones){m.status='passed';m.passedDay=0;}}
   }
-  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');w.careerTimelineVersion=1;initializeV7World(w,{fresh:true});return w;
+  upgrade(w);if(w.settings.historyYears>0){seedHistory(w,w.settings.historyYears);seedPedigreeCareers(w);}recruitAccomplishedSires(w);updateStudFees(w);rotateAuctions(w);schedule(w,0);planNpcEntries(w);setInitialBalance(w,config.balance||'1000000');event(w,'world','Career established. International racing, markets and bloodlines are active.');w.careerTimelineVersion=1;initializeV7World(w,{fresh:true});for(const h of Object.values(w.horses))campaignDay(w,h);return w;
 }
 import { cents } from './rules.js';
 function setInitialBalance(w,balance){w.balance=cents(balance);}
@@ -80,32 +81,32 @@ export function hire(w,role) {
 }
 export function dismiss(w,staffId){const s=w.staff.find(s=>s.id===staffId&&s.owner==='player');if(!s)throw Error('Staff member not found.');w.staff=w.staff.filter(x=>x!==s);event(w,'staff',`${s.name} dismissed.`);}
 function npcMonth(w) {
-  const stables=Object.entries(w.owners).filter(([key])=>!['player','archive'].includes(key));
+  const stables=Object.entries(w.owners).filter(([key])=>!['player','archive'].includes(key)),byOwner=new Map();for(const h of Object.values(w.horses)){if(h.status==='deceased')continue;const list=byOwner.get(h.owner)||[];list.push(h);byOwner.set(h.owner,list);}const listed=new Set(w.listings.filter(l=>!l.sold&&!l.closed).map(l=>l.horseId)),booked=new Set(w.fixtures.filter(f=>f.status==='scheduled').flatMap(f=>f.entries.map(e=>e.horseId)));const breedingSires=Object.values(w.horses).filter(h=>h.brood&&h.sex==='colt'&&h.status==='retired'&&!h.medicalCase&&h.soundness>=65&&age(h,w.day)<23);
   for(const [owner,o] of stables){
-    const horses=Object.values(w.horses).filter(h=>h.owner===owner&&h.status!=='deceased');
+    const horses=byOwner.get(owner)||[];
     for(const h of horses)if(h.status==='active'&&age(h,w.day)>=9){recordRetirement(w,h,'Owner Chose Retirement');h.status='retired';h.brood=h.sex!=='gelding';h.autoTrain=false;event(w,'life',`${h.name} retired by ${o.name}.`,h.id);}
-    if(w.day%360===30){const dam=horses.find(h=>h.brood&&h.sex==='filly'&&!h.pregnancy&&h.postFoalingUntil<=w.day&&age(h,w.day)<19);const sires=Object.values(w.horses).filter(h=>h.brood&&h.sex==='colt'&&h.status==='retired'&&h.location===dam?.location&&!h.medicalCase&&h.soundness>=65&&age(h,w.day)<23);if(dam&&sires.length){try{cover(w,dam.id,pick(w,sires).id,'natural',null,true);}catch{/* Incompatible pairs remain unbred. */}}}
-    if(w.day%360===0){const active=horses.filter(h=>h.status==='active').length;if(active<6){const h=horse(w,owner,o.country,{},1,w.day-720);h.autoTrain=true;h.historyRecorded=true;upgrade(w);event(w,'world',`${o.name} introduces new prospect ${h.name}.`,h.id);}}
-    if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&npcConsignmentAllowed(w,h)&&!w.listings.some(l=>l.horseId===h.id&&!l.sold&&!l.closed)&&!w.fixtures.some(f=>f.status==='scheduled'&&f.entries.some(e=>e.horseId===h.id)));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
+    if(w.day%360===30){const dam=horses.find(h=>h.brood&&h.sex==='filly'&&!h.pregnancy&&h.postFoalingUntil<=w.day&&age(h,w.day)<19);const sires=breedingSires.filter(h=>h.location===dam?.location);if(dam&&sires.length){try{cover(w,dam.id,pick(w,sires).id,'natural',null,true);}catch{/* Incompatible pairs remain unbred. */}}}
+    if(w.day%360===0){const active=horses.filter(h=>h.status==='active').length;if(active<6){const h=horse(w,owner,o.country,{},1,w.day-720);h.autoTrain=true;h.historyRecorded=true;event(w,'world',`${o.name} introduces new prospect ${h.name}.`,h.id);}}
+    if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&npcConsignmentAllowed(w,h)&&!listed.has(h.id)&&!booked.has(h.id));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
     for(const h of horses)if(age(h,w.day)>28&&w.settings.fatalities&&random(w)<.01){h.status='deceased';h.deceasedDay=w.day;h.brood=false;event(w,'life',`${h.name} died in retirement. Their permanent records remain available.`,h.id);}
   }
 }
 export function advanceWorld(w,days) {
-  if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');upgrade(w);ensureCalendarHorizon(w);
+  if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');if(w.schema!==RULES.schema||w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.reproductionVersion!==8)upgrade(w);ensureCalendarHorizon(w);
   for(let i=0;i<days;i++){
     w.day++;
     reproductionDay(w);for(const c of w.coverings)foal(w,c);
-    let horses=Object.values(w.horses);
+    let horses=Object.values(w.horses).filter(h=>h.owner!=='archive');
     for(const h of horses){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
-    for(const h of horses)dailyCare(w,h);
-    planNpcEntries(w);autoRegister(w);horses=Object.values(w.horses);
+    for(const h of horses){dailyCare(w,h);campaignDay(w,h);}
+    planNpcEntries(w);autoRegister(w);horses=Object.values(w.horses).filter(h=>h.owner!=='archive');
     for(const h of horses){
-      if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active')h.autoTrain=true;
+      if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active'){const state=h.npcCampaign?.state,slot=(w.day+seed(h.id))%7;h.autoTrain=!['Freshening break','Post-race recovery','Veterinary break','Rehabilitation'].includes(state)&&(slot===0||slot===3||state==='Conditioning'&&slot===5);}
       if(h.owner!=='archive')scheduledTraining(w,h);
     }
     for(const f of w.fixtures)if(f.day<=w.day&&f.status==='scheduled')resolveRace(w,f.id);
-    horses=Object.values(w.horses);for(const h of horses)if(h.owner!=='archive')exposure(w,h,'turnout');
+    horses=Object.values(w.horses).filter(h=>h.owner!=='archive');for(const h of horses)if(h.owner!=='archive')exposure(w,h,'turnout');
     marketDay(w);
     if(w.day%30===0){
       for(const h of Object.values(w.horses))monthlyV7Review(w,h);
