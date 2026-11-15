@@ -1,3 +1,4 @@
+import {hydrateDisplayArchive} from './ui-snapshot.js';
 // Ordinary player actions only: these archives are append-only. Time advancement
 // runs on an isolated worker copy instead of sharing records with the UI.
 export function actionSnapshot(w,{horseIds=null}={}){
@@ -7,5 +8,5 @@ export function actionSnapshot(w,{horseIds=null}={}){
  const next=structuredClone({...live,horses:horseLive});
  next.horses={...horses,...next.horses};
  for(const [id,h]of Object.entries(horses)){if(selected&&!selected.has(id))continue;next.horses[id].starts=h.starts.slice();next.horses[id].ownership=h.ownership.slice();if(h.soundnessHistory)next.horses[id].soundnessHistory=h.soundnessHistory.slice();}
- return {...next,results:{...results},fixtures:fixtures.map(f=>f.status==='scheduled'||f.status==='running'?structuredClone(f):f),events:events.slice(),ledger:ledger.slice(),sessions:sessions.slice()};
+ const result={...next,results:{...results},fixtures:fixtures.map(f=>f.status==='scheduled'||f.status==='running'?structuredClone(f):f),events:events.slice(),ledger:ledger.slice(),sessions:sessions.slice()};return w._uiView?hydrateDisplayArchive(result):result;
 }

@@ -1,3 +1,6 @@
+import {packRaceArchives} from '../src/immutable-race-archive.js';
+import {packArchivedFields} from '../src/archive-fields.js';
+import {advanceSteps} from '../src/world.js';
 import {scheduleIndex,invalidateSchedule} from '../src/reservations.js';
 import test from 'node:test';import assert from 'node:assert/strict';import {createHash} from 'node:crypto';
 import {createWorld,advanceWorld} from '../src/world.js';import {snapshotParts} from '../src/snapshot-parts.js';
@@ -8,3 +11,5 @@ test('Live simulation population keeps insertion order, accepts births and exclu
 test('Optimized month exactly matches the complete pre-optimization simulation',()=>{const w=createWorld({country:'USA',seed:'skip-profile',historyYears:0,creativeMode:true,starters:[{}]});advanceWorld(w,30);const hash=createHash('sha256');for(const part of snapshotParts(w))hash.update(JSON.stringify(part));assert.equal(hash.digest('hex'),'081b6d389b32e8067d52770a79ea7e3ef850417fdeb7e9f39ce766e1728b5448');});
 
 test('Fixture changes reuse the population index; a new day still refreshes it',()=>{let scans=0;const horses=new Proxy({h:{id:'h',owner:'npc',status:'active',location:'UK'}},{ownKeys(target){scans++;return Reflect.ownKeys(target);}}),w={day:0,horses,travel:[],fixtures:[{id:'next',day:5,status:'scheduled',entries:[]}]};scheduleIndex(w);const first=scans;w.fixtures.push({id:'historical',day:-10,status:'completed',entries:[]});scheduleIndex(w);invalidateSchedule(w,{population:false});scheduleIndex(w);assert.equal(scans,first);w.day=1;scheduleIndex(w);assert.equal(scans,first+1);});
+
+test('Packed ancestor genomes and yielded days preserve the complete simulation oracle',()=>{const w=createWorld({country:'USA',seed:'skip-profile',historyYears:0,creativeMode:true,starters:[{}]});packArchivedFields(w);for(const day of advanceSteps(w,30))packRaceArchives(packArchivedFields(w));const hash=createHash('sha256');for(const part of snapshotParts(w))hash.update(JSON.stringify(part));assert.equal(hash.digest('hex'),'081b6d389b32e8067d52770a79ea7e3ef850417fdeb7e9f39ce766e1728b5448');});

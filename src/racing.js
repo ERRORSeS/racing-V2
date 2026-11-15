@@ -1,3 +1,4 @@
+import {repackHorseFields} from './archive-fields.js';
 import {npcRaceReason,raceSpacing,planCampaignTarget,campaignDay} from './npc-campaign.js';
 import {lengthsPerSecond,finishAwards,marginText} from './race-margins.js';
 import { racingWindowReason } from './durability.js';
@@ -56,7 +57,7 @@ function entryRequirements(w,h,f) {
   return npcRaceReason(w,h,f);
 }
 const nominationChecks=new WeakMap();
-export function eligibility(w,h,f,options={}){
+export function eligibility(w,h,f,options={}){try{
  if(!h||!f)return 'Choose a horse and fixture.';
  const checks=nominationChecks.get(w);let reason;
  if(checks){let horses=checks.get(f);if(!horses){horses=new WeakMap();checks.set(f,horses);}if(!horses.has(h))horses.set(h,entryRequirements(w,h,f));reason=horses.get(h);}else reason=entryRequirements(w,h,f);
@@ -66,6 +67,7 @@ export function eligibility(w,h,f,options={}){
   if(!f.historical&&!options.ignoreBookings&&(scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.fixtureId!==f.id&&Math.abs(b.day-f.day)<(!['player','archive'].includes(h.owner)&&!f.historical?raceSpacing(w,h,f.distance):RULES.minRaceRest)))return 'Conflicting race or recovery period.';
   if(f.country==='Japan'&&h.gear.accessory==='Hood')return 'Hood is restricted by this simulated jurisdiction.';
   return null;
+ }finally{repackHorseFields(h);}
 }
 export function enterRace(w,fixtureId,horseId,jockeyId,tactic='stalk') {
   const h=ownedHorse(w,horseId),f=w.fixtures.find(x=>x.id===fixtureId);if(f&&h.location!==f.country&&h.autoTravel&&!w.travel.some(t=>t.id===h.activeTransport&&t.destination===f.country))bookTravel(w,h.id,f.country,f.id);const reason=eligibility(w,h,f);if(reason)throw Error(reason);

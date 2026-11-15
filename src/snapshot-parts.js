@@ -1,3 +1,4 @@
+import {inheritArchiveFields} from './archive-fields.js';
 // Bounded JSON records: never stringify an entire career or its growing archives.
 const APPEND=new Set(['events','ledger','sessions']);
 const MERGE=new Set(['horses','results','fixtures']);
@@ -37,7 +38,7 @@ export function applySnapshotPart(state,record,part){
  if(c.field==='fixtures'&&state.delta){state.fixtureIndexes??=new Map(w.fixtures.map((f,i)=>[f.id,i]));for(const f of part){const index=state.fixtureIndexes.get(f.id);if(index==null){state.fixtureIndexes.set(f.id,w.fixtures.length);w.fixtures.push(f);}else w.fixtures[index]=f;}return;}
  if(c.shape==='array'){for(const value of part)w[c.field].push(value);return;}
  for(const [key,value]of values){
-  if(c.field==='horses'&&state.delta&&value._historyAppend){const {_historyAppend,_partialHorse,...changed}=value,previous=w.horses[key],next=_partialHorse?{...previous,...changed}:changed;for(const name of ['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory','npcTrainingArchive'])if(Array.isArray(value[name]))next[name]=[...(previous?.[name]||[]),...value[name]];w.horses[key]=next;}
+  if(c.field==='horses'&&state.delta&&value._historyAppend){const {_historyAppend,_partialHorse,...changed}=value,previous=w.horses[key],next=_partialHorse?{...previous,...changed}:changed;for(const name of ['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory','npcTrainingArchive'])if(Array.isArray(value[name]))next[name]=[...(previous?.[name]||[]),...value[name]];w.horses[key]=inheritArchiveFields(previous,next);}
   else Object.defineProperty(w[c.field],key,{value,enumerable:true,writable:true,configurable:true});
  }
 }

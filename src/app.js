@@ -1,3 +1,4 @@
+import {hydrateDisplayArchive} from './ui-snapshot.js';
 import {closedAuctionHistory} from './auction-ui.js';
 import {NAMING_PRESETS} from './naming.js';
 import { bookPregnancyScan,setBroodmareCare,reviewReproductiveRecovery } from './reproduction.js';
@@ -40,10 +41,13 @@ function failBackground(error){for(const r of workerRequests.values()){clearTime
 function armLoadTimeout(request){clearTimeout(request.timer);request.timer=setTimeout(()=>failBackground(Error(request.recovery?'Recovery stopped responding. Stored checkpoints remain available. Retry loading.':'Loading stopped responding. Your saved career has not been changed. Retry loading or restore the previous autosave.')),45000);}
 let fallbackChain=Promise.resolve();
 function receiveBackground({data}){
+ if(data.world?._uiView)hydrateDisplayArchive(data.world);if(data.committed?._uiView)hydrateDisplayArchive(data.committed);
  const request=workerRequests.get(data.requestId);if(!request)return;
  if(data.recoveringCheckpoint){request.recovery=true;armLoadTimeout(request);advanceStatus='Skip interrupted; recovering the last saved checkpoint…';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.replacingWorld){request.recovery=true;armLoadTimeout(request);world=null;uiSaveBase=null;state.loadedResult=null;state.historyEvents=null;state.historyHorseId=null;stopReplay();loadFailed=true;app.innerHTML=`<main><p id="loading-status" role="status">${data.replacingWorld}…</p><p>Your stored checkpoints remain intact.</p></main>`;return;}
  if(data.loading){if(request.type==='load'||request.recovery)armLoadTimeout(request);const label=app.querySelector('#loading-status');if(label)label.textContent=`${data.loading.stage}…${data.loading.total?` ${data.loading.done}/${data.loading.total}`:''}`;return;}
+ if(data.saving){advanceStatus=`${data.saving.stage}…`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
+ if(data.simulating){advanceStatus=`Simulating ${data.simulating.done}/${data.simulating.total} days · saving pending`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  clearTimeout(request.timer);workerRequests.delete(data.requestId);
  if(data.error){const error=Error(data.error);error.committed=data.committed;request.reject(error);}else request.resolve(data);
@@ -70,7 +74,7 @@ const autosaves=createSaveQueue(async snapshot=>{
 },{retryDelays:[2000,5000,15000],onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status==='Saved'&&notice.startsWith('Autosave failed.')){notice='Autosave recovered; changes saved.';const message=app.querySelector('.notice');if(message)message.textContent=notice;}if(status.startsWith('Save failed:')){notice='Autosave failed. Your changes remain in memory; export, retry or reload.';render();}}});
 async function update(action,message='Changes applied. Autosave pending.',horseIds=[]) {
  if(busy||actionPending){notice='Time is advancing. You can browse records; changes resume after the queued skips finish.';render();return;}actionPending=true;stopReplay();
- try{const next=actionSnapshot(world,{horseIds});await action(next);world=next;autosaves.schedule(world);notice=message;}
+ try{const next=actionSnapshot(world,{horseIds});await action(next);world=hydrateDisplayArchive(next);autosaves.schedule(world);notice=message;}
  catch(error){notice=error.message;}finally{actionPending=false;}render();
 }
 const advances=createAdvanceQueue(async days=>{
