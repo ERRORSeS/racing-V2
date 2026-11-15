@@ -17,3 +17,23 @@ aside>nav,aside>.brand,aside>.nav-label,aside>.aside-bottom{flex-shrink:0}
 /* Full creative names remain readable at every viewport size. */
 h1,h2,h3,summary,td,a,.horse-name,.starter strong{overflow-wrap:anywhere;white-space:normal;text-overflow:clip;}
 .fields>*{min-width:0}select{max-width:100%}.profile-tabs{flex-wrap:wrap}
+/* Keep the stable roster readable instead of squeezing six columns to fit. */
+.horse-roster{min-width:0}
+.horse-roster .filters{gap:14px 18px}
+.horse-roster .filters>input{min-width:0;flex:1 1 260px}
+.horse-roster .filters label{min-width:140px;flex:1 1 140px}
+.horse-roster .filters select{width:100%}
+.horse-roster .table-wrap{max-width:100%;overflow-x:auto}
+.horse-roster table{min-width:1040px}
+.horse-roster th,.horse-roster td{vertical-align:top;overflow-wrap:normal;word-break:normal}
+.horse-roster .horse-cell{min-width:280px;max-width:360px;overflow-wrap:break-word}
+.horse-roster td:nth-child(2){min-width:90px}
+.horse-roster td:nth-child(3){min-width:155px}
+.horse-roster td:nth-child(4){min-width:130px}
+.horse-roster td:nth-child(5){min-width:180px}
+.horse-roster td:nth-child(6){min-width:170px}
+.horse-roster td small{line-height:1.65}
+.horse-roster td button{white-space:nowrap}
+@media(max-width:650px){.horse-roster .filters label{min-width:0;flex-basis:calc(50% - 18px)}.horse-roster .filters>input{flex-basis:100%}.horse-roster .pager{gap:10px;justify-content:space-between;flex-wrap:wrap}}
+
+.horse-roster td .badge{display:inline-block;max-width:200px;white-space:normal;line-height:1.5}
