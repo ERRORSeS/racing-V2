@@ -130,12 +130,12 @@ export function train(w,h,manual=false,activity=null) {
 }
 export function dailyCare(w,h) {
   if(h.status==='deceased'||h.owner==='archive')return;
-  durabilityDay(w,h);recoveryDay(w,h);
+  durabilityDay(w,h);recoveryDay(w,h);const careModifiers=traitModifiers(h,{phase:'care'}).values;
   if(age(h,w.day)>12)h.fitness=clamp(h.fitness-.01*(age(h,w.day)-12));
-  changeFatigue(w,h,{recovery:RULES.restRecovery*(.8+h.skills.recovery/250)*(1+(traitModifiers(h,{phase:'care'}).values.recovery||0))+(h.breakPlan&&h.breakPlan.stage!=='Complete'?1:0),source:'Daily recovery'});
+  changeFatigue(w,h,{recovery:RULES.restRecovery*(.8+h.skills.recovery/250)*(1+(careModifiers.recovery||0))+(h.breakPlan&&h.breakPlan.stage!=='Complete'?1:0),source:'Daily recovery'});
   const warnings=feedWarnings(h,w.day);h.acuteStress=warnings.length>=2?'Care incompatibility':h.fatigue>70?'Excessive workload':null;
-  h.condition=clamp(h.condition+(traitModifiers(h,{phase:'care'}).values.condition||0)*.05+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
-  if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(traitModifiers(h,{phase:'care'}).values.hoof||0)*3));
+  h.condition=clamp(h.condition+(careModifiers.condition||0)*.05+(h.feed==='Weight Gain'?.008:h.feed==='High Energy'?.004:(5-h.condition)*.002),1,9);
+  if(w.day>h.farrierDue)h.hoofHealth=clamp(h.hoofHealth-.18*(1-(careModifiers.hoof||0)*3));
   const m=medicalById(w,h.medicalCase);
   if(m&&m.status==='active'){
     const specialist=w.staff.find(s=>s.owner===h.owner&&s.role==='Veterinarian');h.soundness=Math.min(h.potentialSoundnessCeiling??m.ceiling,h.soundness+(m.decision==='pending'?.025:m.rehab?.16:.055)*(specialist?1+specialist.skill/500:1)*(1+(traitModifiers(h,{phase:'vet'}).values.veterinary||0)));
@@ -151,7 +151,7 @@ export function dailyCare(w,h) {
   if(w.settings.operatingCosts&&h.autoCare){try{charge(w,h,'2000','Daily care',h.id);}catch{h.acuteStress='Care payment overdue';}}
   initializeDurability(w,h);refreshMaterialValue(w,h);
   if(w.day%30===0){
-    const negative=warnings.length+(h.fatigue>55?2:0)+(h.soundness<70?1:0)+(traitModifiers(h,{phase:'care'}).values.turnout?1:0);
+    const negative=warnings.length+(h.fatigue>55?2:0)+(h.soundness<70?1:0)+(careModifiers.turnout?1:0);
     const pool=negative>=2?['Distress','Uncomfortable','No Energy',h.preferredMood]:negative?['Uncomfortable','Overly-Active','Neutral',h.preferredMood]:['Happy','Happy','Motivated','Try-Hard','Neutral','Neutral',h.preferredMood,'Grumpy','Bad Mood'];
     h.mood=pick(w,pool);event(w,'mood',`${h.name}: monthly mood ${h.mood}${warnings.length?'. '+warnings.join(' '):'; care and recovery reviewed.'}`,h.id);
   }

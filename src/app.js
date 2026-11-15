@@ -41,6 +41,7 @@ function armLoadTimeout(request){clearTimeout(request.timer);request.timer=setTi
 let fallbackChain=Promise.resolve();
 function receiveBackground({data}){
  const request=workerRequests.get(data.requestId);if(!request)return;
+ if(data.recoveringCheckpoint){request.recovery=true;armLoadTimeout(request);advanceStatus='Skip interrupted; recovering the last saved checkpoint…';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.replacingWorld){request.recovery=true;armLoadTimeout(request);world=null;uiSaveBase=null;state.loadedResult=null;state.historyEvents=null;state.historyHorseId=null;stopReplay();loadFailed=true;app.innerHTML=`<main><p id="loading-status" role="status">${data.replacingWorld}…</p><p>Your stored checkpoints remain intact.</p></main>`;return;}
  if(data.loading){if(request.type==='load'||request.recovery)armLoadTimeout(request);const label=app.querySelector('#loading-status');if(label)label.textContent=`${data.loading.stage}…${data.loading.total?` ${data.loading.done}/${data.loading.total}`:''}`;return;}
  if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}

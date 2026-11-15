@@ -60,7 +60,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    }
   }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'||data.type==='restore'});
   residentWorld=world;emit(base?{requestId:data.requestId,patch:worldPatch(world,base),saved:true}:{requestId:data.requestId,world,saved:true});
- }catch(error){let committed=null;if(checkpointWritten){emit({requestId:data.requestId,replacingWorld:'Reopening the last saved checkpoint'});residentWorld=null;base=null;releaseCareerBaseline();try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(['import','save-patch','export','get-result','horse-history'].includes(data.type)?previousResident:null);emit({requestId:data.requestId,error:error.message,committed});}
+ }catch(error){let committed=null;if(checkpointWritten){emit({requestId:data.requestId,recoveringCheckpoint:true});residentWorld=null;base=null;releaseCareerBaseline();try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(['import','save-patch','export','get-result','horse-history'].includes(data.type)?previousResident:null);emit({requestId:data.requestId,error:error.message,committed});}
 }
 function yieldTask(){if(globalThis.scheduler?.yield)return scheduler.yield();return new Promise(resolve=>{const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(null);});}
 
