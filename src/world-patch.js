@@ -1,12 +1,20 @@
+import {decodeField} from './archive-codec.js';
+import {ARCHIVE_FIELDS,fieldIdentity,inheritArchiveFields,hasPackedFields,repackHorseFields} from './archive-fields.js';
+import {tailView,trimDisplayHistories,hydrateDisplayArchive,DISPLAY_FIELDS} from './ui-snapshot.js';
 // A bounded stamp avoids retaining a second serialized copy of every ancestor.
 function archiveStamp(h){const text=JSON.stringify(h);let a=2166136261,b=2654435761;for(let i=0;i<text.length;i++){const c=text.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822519);}return `${text.length}:${a>>>0}:${b>>>0}`;}
 // Completed races and these histories are append-only. Transfer additions and
 // mutable records, rather than cloning every old replay and training log.
 const ROOT_HISTORY=['events','ledger','sessions'];
+const staticValue=fieldIdentity;
 const HORSE_STATIC=['genome','potential','conformation','originRules'];
+const staticKeys=h=>h._uiArchiveFields?DISPLAY_FIELDS:h.owner==='archive'||hasPackedFields(h)?ARCHIVE_FIELDS:HORSE_STATIC;
+const BULKY_FIELDS=['youngstock','traitInstances','coat'];
 const HORSE_HISTORY=['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory','npcTrainingArchive'];
+function bulkyStamps(h){const stamps=Object.fromEntries(BULKY_FIELDS.filter(key=>h[key]!==undefined).map(key=>[key,archiveStamp(h[key])]));repackHorseFields(h);return stamps;}
 export function patchBase(w,{identity=false}={}){return {
- horseStatic:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(HORSE_STATIC.map(key=>[key,h[key]]))])),
+ horseStatic:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(staticKeys(h).map(key=>[key,staticValue(h,key)]))])),
+ horseFields:identity?null:new Map(Object.entries(w.horses).filter(([,h])=>h.owner!=='archive'&&!hasPackedFields(h)).map(([id,h])=>[id,bulkyStamps(h)])),
  horseRefs:identity?new Map(Object.entries(w.horses)):null,
  lengths:Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].length])),
  horseLengths:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(HORSE_HISTORY.map(key=>[key,h[key]?.length||0]))])),
@@ -19,16 +27,17 @@ export function worldPatch(w,base){const {_uiView,...source}=w;return {
  results:Object.fromEntries(Object.entries(w.results).filter(([id])=>!base.results.has(id))),
  fixtures:w.fixtures.filter(f=>!base.completed.has(f.id)),
  horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
-  const lengths=base.horseLengths.get(id);if(!lengths)return [id,h];const next={...h,_historyAppend:true};
-  for(const key of HORSE_STATIC)if(base.horseStatic?.get(id)?.[key]===h[key]){delete next[key];next._partialHorse=true;}
-  for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=h[key].slice(lengths[key]);return [id,next];
+  const lengths=base.horseLengths.get(id),{_uiArchiveFields,...fields}=h;if(!lengths)return [id,_uiArchiveFields?{...fields,...Object.fromEntries(Object.entries(_uiArchiveFields).map(([key,value])=>[key,decodeField(value)]))}:h];const next={...fields,_historyAppend:true};
+  for(const key of staticKeys(h))if(base.horseStatic?.get(id)?.[key]===staticValue(h,key)){delete next[key];next._partialHorse=true;}else next[key]=_uiArchiveFields?.[key]?decodeField(_uiArchiveFields[key]):h[key];
+  for(const key of BULKY_FIELDS)if(base.horseFields?.get(id)?.[key]!==undefined&&base.horseFields.get(id)[key]===archiveStamp(h[key])){delete next[key];next._partialHorse=true;}
+  for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=h[key].slice(lengths[key]);repackHorseFields(h);return [id,next];
  }))
 };}
 export function applyWorldPatch(w,patch){
  const fixtures=new Map(w.fixtures.map(f=>[f.id,f]));for(const f of patch.fixtures)fixtures.set(f.id,f);
  const horses={...w.horses};for(const [id,h]of Object.entries(patch.horses)){
   if(!h._historyAppend){horses[id]=h;continue;}
-  const {_historyAppend,_partialHorse,...changed}=h,next=_partialHorse?{...w.horses[id],...changed}:changed;for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=(w.horses[id]?.[key]||[]).concat(h[key]);horses[id]=next;
+  const {_historyAppend,_partialHorse,...changed}=h,next=_partialHorse?{...w.horses[id],...changed}:changed;for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=(w.horses[id]?.[key]||[]).concat(h[key]);if(patch._uiView){if(h._uiArchiveFields){next._uiArchiveFields={...(w.horses[id]?._uiArchiveFields||{}),...h._uiArchiveFields};for(const key of Object.keys(h._uiArchiveFields))delete next[key];}if(next.npcTrainingArchive)next.npcTrainingArchive=tailView(next.npcTrainingArchive,30);if(next.durabilityEvents)next.durabilityEvents=tailView(next.durabilityEvents,40);}horses[id]=inheritArchiveFields(w.horses[id],next);
  }
- return {...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].concat(patch[key])])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};
+ const merged={...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].concat(patch[key])])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};return patch._uiView?hydrateDisplayArchive(trimDisplayHistories(merged)):merged;
 }

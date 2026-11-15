@@ -1,0 +1,11 @@
+import {encodeField,decodeField} from './archive-codec.js';
+// Completed replays and start inputs are immutable; retain their exact data as
+// text and decode only for inspection/valuation or ordinary JSON persistence.
+export const REPLAY_FIELDS=['frames','events','highlights','incidents'];
+export const START_INPUT_FIELDS=['effectiveSkills','traitInputs','splits','gear','readiness'];
+const metadata=new WeakMap(),schemas=new Map();
+function prototypeFor(fields){const prototype=Object.create(Object.prototype);for(const key of fields)Object.defineProperty(prototype,key,{get(){const text=metadata.get(this).fields.get(key);return text===undefined?undefined:decodeField(text);},set(value){metadata.get(this)?.fields.delete(key);Object.defineProperty(this,key,{value,writable:true,enumerable:true,configurable:true});}});Object.defineProperty(prototype,'toJSON',{value:function(){const m=metadata.get(this),out={};for(const key of new Set([...m.keys,...Object.keys(this)])){if(Object.hasOwn(this,key))out[key]=this[key];else if(m.fields.has(key))out[key]=decodeField(m.fields.get(key));}return out;}});return prototype;}
+const replayPrototype=prototypeFor(REPLAY_FIELDS),startPrototype=prototypeFor(START_INPUT_FIELDS);
+function pack(record,fields,prototype){if(metadata.has(record))return record;const keys=Object.keys(record),signature=keys.join('|');let shared=schemas.get(signature);if(!shared){shared=keys;schemas.set(signature,keys);}const data=new Map(),entries=[];for(const key of keys){if(fields.includes(key)&&record[key]!=null)data.set(key,encodeField(record[key]));else entries.push([key,record[key]]);}const next=Object.fromEntries(entries);Object.setPrototypeOf(next,prototype);metadata.set(next,{keys:shared,fields:data});return next;}
+export function packRaceArchives(w,{horseIds=null,resultIds=null}={}){for(const [id,result]of resultIds?resultIds.map(id=>[id,w.results[id]]):Object.entries(w.results)){for(let i=0;i<result.rows.length;i++)result.rows[i]=pack(result.rows[i],START_INPUT_FIELDS,startPrototype);w.results[id]=pack(result,REPLAY_FIELDS,replayPrototype);}for(const h of horseIds?horseIds.map(id=>w.horses[id]):Object.values(w.horses))for(let i=0;i<h.starts.length;i++)h.starts[i]=pack(h.starts[i],START_INPUT_FIELDS,startPrototype);return w;}
+export function fullRecordedResult(result){return JSON.parse(JSON.stringify(result));}

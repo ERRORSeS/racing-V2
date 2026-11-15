@@ -1,3 +1,4 @@
+import {repackHorseFields} from './archive-fields.js';
 import {beginPopulation,liveHorses} from './simulation-population.js';
 import {campaignDay} from './npc-campaign.js';
 import { reproductionDay } from './reproduction.js';
@@ -92,30 +93,32 @@ function npcMonth(w) {
     for(const h of horses)if(age(h,w.day)>28&&w.settings.fatalities&&random(w)<.01){h.status='deceased';h.deceasedDay=w.day;h.brood=false;event(w,'life',`${h.name} died in retirement. Their permanent records remain available.`,h.id);}
   }
 }
-export function advanceWorld(w,days) {
+export function advanceWorld(w,days){for(const day of advanceSteps(w,days)){/* Synchronous engine API. */}}
+export function* advanceSteps(w,days) {
   if(!Number.isSafeInteger(days)||days<1||days>36000)throw Error('Advance 1–36,000 days at a time.');if(w.schema!==RULES.schema||w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.reproductionVersion!==8)upgrade(w);ensureCalendarHorizon(w);beginPopulation(w);
   for(let i=0;i<days;i++){
     w.day++;
     reproductionDay(w);for(const c of w.coverings)foal(w,c);
     let horses=liveHorses(w).slice();
-    for(const h of horses){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
+    for(const h of horses){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);repackHorseFields(h);}
     processTravel(w);
-    for(const h of horses){dailyCare(w,h);campaignDay(w,h);}
+    for(const h of horses){dailyCare(w,h);campaignDay(w,h);repackHorseFields(h);}
     planNpcEntries(w);autoRegister(w);horses=liveHorses(w).slice();
     for(const h of horses){
       if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active'){const state=h.npcCampaign?.state,slot=(w.day+seed(h.id))%7;h.autoTrain=!['Freshening break','Post-race recovery','Veterinary break','Rehabilitation'].includes(state)&&(slot===0||slot===3||state==='Conditioning'&&slot===5);}
-      if(h.owner!=='archive')scheduledTraining(w,h);
+      if(h.owner!=='archive')scheduledTraining(w,h);repackHorseFields(h);
     }
     for(const f of w.fixtures)if(f.day<=w.day&&f.status==='scheduled')resolveRace(w,f.id);
-    horses=liveHorses(w).slice();for(const h of horses)if(h.owner!=='archive')exposure(w,h,'turnout');
+    horses=liveHorses(w).slice();for(const h of horses){if(h.owner!=='archive')exposure(w,h,'turnout');repackHorseFields(h);}
     marketDay(w);
     if(w.day%30===0){
-      for(const h of Object.values(w.horses))monthlyV7Review(w,h);
+      for(const h of Object.values(w.horses)){monthlyV7Review(w,h);repackHorseFields(h);}
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);
       for(const s of w.staff)if(s.owner==='player'){try{transact(w,-BigInt(s.wage),'Staff wages',s.id);}catch{event(w,'staff',`Wage unpaid for ${s.name}; service suspended.`);s.owner='unpaid';}}
-      npcMonth(w);for(const h of Object.values(w.horses))if(h.owner!=='archive')refreshMaterialValue(w,h);rotateAuctions(w);recruitAccomplishedSires(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
+      npcMonth(w);for(const h of Object.values(w.horses)){if(h.owner!=='archive')refreshMaterialValue(w,h);repackHorseFields(h);}rotateAuctions(w);recruitAccomplishedSires(w);updateStudFees(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
 
     }
+    yield w.day;
   }
   event(w,'calendar',`Advanced ${days} days; care, training, races, medical plans, markets and pregnancies processed.`);
 }

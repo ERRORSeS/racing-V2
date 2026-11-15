@@ -1,3 +1,5 @@
+import {packRaceArchives} from './immutable-race-archive.js';
+import {repackHorseFields,packArchivedFields} from './archive-fields.js';
 import { snapshotParts,beginSnapshotParts,applySnapshotPart,finishSnapshotParts,portableSnapshotBlob,readPortableSnapshot,snapshotHash } from './snapshot-parts.js';
 import { initializeV7World } from './v7.js';
 import { patchBase, worldPatch, applyWorldPatch } from './world-patch.js';
@@ -11,7 +13,7 @@ export function validate(w){
  if(!w||w.schema!==RULES.schema)throw Error('Unsupported save version. Original data has not been changed.');
  if(!Number.isSafeInteger(w.day)||w.day<0||!Number.isInteger(w.rng)||w.rng<=0||!Number.isSafeInteger(w.sequence)||!COUNTRIES[w.country]||!/^[-]?\d+$/.test(w.balance)||!w.horses||!w.owners?.player)throw Error('Corrupt world header.');
  for(const key of ['events','ledger','listings','fixtures','sessions'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
- for(const [key,h] of Object.entries(w.horses)){if(h.id!==key||h.breed!=='Thoroughbred'||!w.owners[h.owner]||!COUNTRIES[h.country]||!Number.isSafeInteger(h.born)||!Array.isArray(h.starts)||!Array.isArray(h.formerNames)||!h.coat||!h.conformation)throw Error('Corrupt horse record.');for(const p of [h.sire,h.dam])if(p&&(!w.horses[p]||w.horses[p].born>=h.born))throw Error('Invalid ancestry.');for(const k of SKILLS)if(!Number.isFinite(h.skills[k])||!Number.isFinite(h.potential[k])||h.skills[k]<0||h.skills[k]>h.potential[k]||h.potential[k]>100)throw Error('Invalid ability.');for(const k of ['soundness','fitness','fatigue','temperament','spookiness'])if(!Number.isFinite(h[k])||h[k]<0||h[k]>100)throw Error(`Invalid ${k}.`);}
+ for(const [key,h] of Object.entries(w.horses)){const potential=h.potential;if(h._uiArchiveFields)throw Error('Display-only ancestor data cannot replace a complete saved horse.');if(h.id!==key||h.breed!=='Thoroughbred'||!w.owners[h.owner]||!COUNTRIES[h.country]||!Number.isSafeInteger(h.born)||!Array.isArray(h.starts)||!Array.isArray(h.formerNames)||!h.coat||!h.conformation)throw Error('Corrupt horse record.');for(const p of [h.sire,h.dam])if(p&&(!w.horses[p]||w.horses[p].born>=h.born))throw Error('Invalid ancestry.');for(const k of SKILLS)if(!Number.isFinite(h.skills[k])||!Number.isFinite(potential[k])||h.skills[k]<0||h.skills[k]>potential[k]||potential[k]>100)throw Error('Invalid ability.');for(const k of ['soundness','fitness','fatigue','temperament','spookiness'])if(!Number.isFinite(h[k])||h[k]<0||h[k]>100)throw Error(`Invalid ${k}.`);repackHorseFields(h);}
  for(const l of w.listings)if(!w.horses[l.horseId]||!/^\d+$/.test(l.price))throw Error('Invalid listing.');
  if(new Set(w.events.map(e=>e.id)).size!==w.events.length)throw Error('Duplicate event identity.');
  for(const e of w.events)if(e.horseId&&!w.horses[e.horseId])throw Error('Missing event horse.');
@@ -24,7 +26,7 @@ export function validate(w){
  const jockeys=new Set(w.jockeys.map(j=>j.id)),fixtureById=new Map(w.fixtures.map(f=>[f.id,f])),listingIds=new Set(w.listings.map(l=>l.id));
  if(new Set(w.fixtures.map(f=>f.id)).size!==w.fixtures.length)throw Error('Duplicate fixture identity.');
  if(!Array.isArray(w.calendarGenerationLog)||new Set(w.calendarGenerationLog.map(l=>l.key)).size!==w.calendarGenerationLog.length)throw Error('Invalid calendar generation log.');
- for(const h of Object.values(w.horses)){
+ for(const h of Object.values(w.horses)){const genome=h.genome;
   if(!['filly','colt','gelding'].includes(h.sex)||!['active','retired','deceased'].includes(h.status)||!COUNTRIES[h.location]||!Array.isArray(h.traits)||!Array.isArray(h.ownership)||!h.gear||!Number.isFinite(h.condition)||h.condition<1||h.condition>9||!Number.isFinite(h.hoofHealth)||h.hoofHealth<0||h.hoofHealth>100)throw Error('Invalid horse care or identity.');
   if(h.autoRace!=null&&typeof h.autoRace!=='boolean'||h.autoRaceInterval!=null&&(!Number.isInteger(h.autoRaceInterval)||h.autoRaceInterval<5||h.autoRaceInterval>90)||h.autoRaceMaxTier!=null&&!['Auto','2','3','4','5','6','7'].includes(String(h.autoRaceMaxTier)))throw Error('Invalid per-horse race policy.');
   if(h.trainingIntensity!=null&&!['Rest','Light','Balanced','Intense'].includes(h.trainingIntensity)||h.protectRecovery!=null&&typeof h.protectRecovery!=='boolean')throw Error('Invalid training policy.');
@@ -40,10 +42,10 @@ export function validate(w){
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
   if(h.medicalCase&&!w.medical.some(m=>m.id===h.medicalCase&&m.horseId===h.id&&m.status==='active'))throw Error('Broken medical reference.');
   if(h.pregnancy&&!w.coverings.some(c=>c.id===h.pregnancy&&c.damId===h.id&&c.status==='pregnant'))throw Error('Broken pregnancy reference.');
-  if(!h.genome||h.genome.version!==1||!h.genome.loci||!h.genome.quantitativeHaplotypes||!h.development||!Array.isArray(h.traitInstances))throw Error('Missing V3 genome or development records.');
-  for(const [key,def]of Object.entries(LOCI)){const locus=h.genome.loci[key];if(!locus||!Array.isArray(locus.alleles)||locus.alleles.length!==2||!['verified','inferred','unknown'].includes(locus.confidence)||locus.alleles.some(a=>a!==null&&!def.alleles.includes(a)))throw Error('Invalid genetic locus.');}
-  if(incompatibleGenotypes(h.genome))throw Error('Incompatible viable genotype.');
-  for(const block of Object.values(h.genome.quantitativeHaplotypes))if(!Array.isArray(block)||block.length!==2||block.some(hap=>!Array.isArray(hap)||hap.length!==8||hap.some(a=>!Number.isInteger(a)||a<0||a>4)))throw Error('Invalid quantitative haplotype.');
+  if(!genome||genome.version!==1||!genome.loci||!genome.quantitativeHaplotypes||!h.development||!Array.isArray(h.traitInstances))throw Error('Missing V3 genome or development records.');
+  for(const [key,def]of Object.entries(LOCI)){const locus=genome.loci[key];if(!locus||!Array.isArray(locus.alleles)||locus.alleles.length!==2||!['verified','inferred','unknown'].includes(locus.confidence)||locus.alleles.some(a=>a!==null&&!def.alleles.includes(a)))throw Error('Invalid genetic locus.');}
+  if(incompatibleGenotypes(genome))throw Error('Incompatible viable genotype.');
+  for(const block of Object.values(genome.quantitativeHaplotypes))if(!Array.isArray(block)||block.length!==2||block.some(hap=>!Array.isArray(hap)||hap.length!==8||hap.some(a=>!Number.isInteger(a)||a<0||a>4)))throw Error('Invalid quantitative haplotype.');
   if(!Number.isFinite(h.potentialSoundnessCeiling)||!Number.isFinite(h.irreversibleSoundnessLimit)||h.potentialSoundnessCeiling<0||h.potentialSoundnessCeiling>h.irreversibleSoundnessLimit||h.irreversibleSoundnessLimit>100)throw Error('Invalid recoverable or irreversible soundness limit.');
   const y=h.youngstock,ht=h.height,p=y?.starting;
   if(!ht||!Number.isInteger(ht.currentMm)||ht.currentMm<700||ht.currentMm>1900||!Number.isInteger(ht.geneticMatureMm)||ht.geneticMatureMm<1400||ht.geneticMatureMm>1850||!Array.isArray(ht.measurements)||ht.measurements.some(m=>!Number.isInteger(m.heightMm)||m.heightMm<700||m.heightMm>1900||!Number.isSafeInteger(m.day)))throw Error('Invalid height / growth history.');
@@ -52,6 +54,7 @@ export function validate(w){
   if(!h.reliability||!Number.isFinite(h.reliability.currentForm)||Math.abs(h.reliability.currentForm)>.04||!Number.isFinite(h.reliability.dailyVolatility)||h.reliability.dailyVolatility<0||h.reliability.dailyVolatility>.3)throw Error('Invalid reliability profile.');
   validateCareerTimeline(w,h,fixtureById);
   const seen=new Set();for(const start of h.starts){if(!w.results[start.resultId]||seen.has(start.resultId)||!/^\d+$/.test(start.prize)||(start.outcome==='Pulled up'?start.place!==null||start.prize!=='0'||start.time!==null:!Number.isInteger(start.place)||start.place<1))throw Error('Invalid career start.');seen.add(start.resultId);}
+  repackHorseFields(h);
  }
  for(const f of w.fixtures){if(!Number.isInteger(f.day)||!COUNTRIES[f.country]||!Array.isArray(f.entries)||!['scheduled','running','completed','closed','canceled'].includes(f.status))throw Error('Invalid fixture.');for(const e of f.entries)if(!w.horses[e.horseId]||!jockeys.has(e.jockeyId)||!w.owners[e.owner])throw Error('Invalid race entry.');if(f.resultId&&!w.results[f.resultId])throw Error('Missing committed result.');}
  for(const [key,r] of Object.entries(w.results)){if(r._uiDeferred||r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
@@ -85,7 +88,7 @@ function database(){return new Promise((resolve,reject)=>{
  r.onblocked=()=>fail(Error('The save database is blocked by another game tab. Close that tab and retry loading.'));
  r.onsuccess=()=>{if(settled){r.result.close();return;}settled=true;clearTimeout(timer);r.result.onversionchange=()=>r.result.close();resolve(r.result);};r.onerror=()=>fail(r.error);
 });}
-async function dbRead(key,{onProgress=()=>{}}={}){const db=await database();return new Promise((resolve,reject)=>{
+async function dbRead(key,{onProgress=()=>{},compactRuntime=false}={}){const db=await database();return new Promise((resolve,reject)=>{
  const tx=db.transaction('snapshots','readonly'),store=tx.objectStore('snapshots'),r=store.get(key);let value,failure,w=null,parts=null;
  async function decodeRecord(chunk,index,manifest){
   if(!chunk)throw Error('Snapshot chunk missing. Restore the previous autosave.');
@@ -93,6 +96,7 @@ async function dbRead(key,{onProgress=()=>{}}={}){const db=await database();retu
   if(chunk.kind==='parts-start'){if(parts)finishSnapshotParts(parts);parts=beginSnapshotParts(w,next);w=parts.world;}
   else if(chunk.kind==='parts-data'&&parts)applySnapshotPart(parts,chunk,next);
   else{if(parts){finishSnapshotParts(parts);parts=null;}if(chunk.kind==='base')w=next;else if(w&&chunk.kind==='patch')w=applyWorldPatch(w,next);else throw Error('Invalid snapshot chunk order.');}
+  if(compactRuntime&&w?.schema===7&&w.careerTimelineVersion===1&&w.preDebutSoundnessVersion===1&&w.v9Version===9&&w.reproductionVersion===8&&chunk.kind==='parts-data'){const ids=Object.keys(next);if(chunk.field==='horses'){packArchivedFields(w,ids);packRaceArchives(w,{horseIds:ids,resultIds:[]});}else if(chunk.field==='results')packRaceArchives(w,{horseIds:[],resultIds:ids});}
   if(index===manifest.chunks.length-1){if(parts)finishSnapshotParts(parts);if(!w)throw Error('Snapshot base missing.');w.storageRevision=manifest.revision;value={format:'decoded-manifest-v3',world:w,chunkCount:manifest.chunks.length,deltaDepth:manifest.deltaDepth||0};}
   if(index%8===0||index===manifest.chunks.length-1)onProgress({stage:'Reading saved records',done:index+1,total:manifest.chunks.length});
  }
@@ -117,12 +121,12 @@ export async function unpack(data){if(typeof data==='string')return data;return 
 let persistedBase=null;
 export function releaseCareerBaseline(){if(persistedBase)persistedBase.base=null;}
 const MAX_DELTA_WRITES=24,MAX_MANIFEST_CHUNKS=1024;
-export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null}={}){
- validate(w);
+export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null,onProgress=()=>{}}={}){
+ onProgress({stage:'Checking checkpoint'});validate(w);onProgress({stage:'Preparing saved records'});
  const deltaBase=persistedBase?.base||initialBase,delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS&&!!(preparedPatch||deltaBase);
- const records=[];let batch=[];
- for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,deltaBase)):w,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];}}await Promise.all(batch);
- const db=await database();let nextRevision,writtenManifest;
+ const records=[];let batch=[];const snapshot=delta?(preparedPatch||worldPatch(w,deltaBase)):w;onProgress({stage:'Encoding checkpoint'});
+ for(const part of snapshotParts(snapshot,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];if(records.length%16===0)onProgress({stage:`Encoding ${records.length} saved records`});}}await Promise.all(batch);
+ onProgress({stage:'Committing checkpoint'});const db=await database();let nextRevision,writtenManifest;
  try{await new Promise((resolve,reject)=>{
   const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');let failure;
   previous.onsuccess=()=>{
@@ -152,8 +156,8 @@ async function readSnapshot(data,{onProgress=()=>{}}={}){
  onProgress({stage:'Checking saved career'});
  const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,chunkCount:data.chunkCount||0,deltaDepth:data.deltaDepth||0,base:null};return w;
 }
-export async function loadCareer({onProgress=()=>{},includeLegacy=true}={}){onProgress({stage:'Opening saved career'});const data=await dbRead('current',{onProgress});if(data)return readSnapshot(data,{onProgress});const legacy=!includeLegacy||typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
-export async function backupCareer({onProgress=()=>{}}={}){onProgress({stage:'Reading previous autosave'});const data=await dbRead('backup',{onProgress});if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
+export async function loadCareer({onProgress=()=>{},includeLegacy=true,compactRuntime=false}={}){onProgress({stage:'Opening saved career'});const data=await dbRead('current',{onProgress,compactRuntime});if(data)return readSnapshot(data,{onProgress});const legacy=!includeLegacy||typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
+export async function backupCareer({onProgress=()=>{},compactRuntime=false}={}){onProgress({stage:'Reading previous autosave'});const data=await dbRead('backup',{onProgress,compactRuntime});if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
 
 export function exportCareerBlob(w){validate(w);return portableSnapshotBlob(w);}
 export async function importCareerFile(file){
