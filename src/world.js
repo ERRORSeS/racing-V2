@@ -95,16 +95,17 @@ export function advanceWorld(w,days) {
   for(let i=0;i<days;i++){
     w.day++;
     reproductionDay(w);for(const c of w.coverings)foal(w,c);
-    for(const h of Object.values(w.horses)){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
+    let horses=Object.values(w.horses);
+    for(const h of horses){youngstockDay(w,h);if(h.owner!=='archive')updateForm(w,h);}
     processTravel(w);
-    for(const h of Object.values(w.horses))dailyCare(w,h);
-    planNpcEntries(w);autoRegister(w);
-    for(const h of Object.values(w.horses)){
+    for(const h of horses)dailyCare(w,h);
+    planNpcEntries(w);autoRegister(w);horses=Object.values(w.horses);
+    for(const h of horses){
       if(h.owner!=='player'&&h.owner!=='archive'&&h.status==='active')h.autoTrain=true;
       if(h.owner!=='archive')scheduledTraining(w,h);
     }
     for(const f of w.fixtures)if(f.day<=w.day&&f.status==='scheduled')resolveRace(w,f.id);
-    for(const h of Object.values(w.horses))if(h.owner!=='archive')exposure(w,h,'turnout');
+    horses=Object.values(w.horses);for(const h of horses)if(h.owner!=='archive')exposure(w,h,'turnout');
     marketDay(w);
     if(w.day%30===0){
       for(const h of Object.values(w.horses))monthlyV7Review(w,h);

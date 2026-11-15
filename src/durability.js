@@ -1,3 +1,4 @@
+import { medicalById } from './clinical-index.js';
 import {age,clamp,dateLabel,RULES} from './rules.js';
 import {seed} from './random.js';
 import {event,scratchEntries} from './core.js';
@@ -14,7 +15,7 @@ export function initializeDurability(w,h){
  const configured=Math.min(MAX_RACING_DAYS,Math.max(360,Math.round((w.settings?.maximumRacingCareerYears??5)*360)));
  if(p.maximumCareerDurationDays!==configured){p.maximumCareerDurationDays=configured;p.absoluteRaceEndDate=p.firstRaceDate==null?null:p.firstRaceDate+configured;}
  if(p.observedStarts!==h.starts.length){const first=h.starts.length?Math.min(...h.starts.map(s=>s.day)):null;p.firstRaceDate=first;p.firstRacingAge=first==null?null:age(h,first);p.absoluteRaceEndDate=first==null?null:first+p.maximumCareerDurationDays;p.observedStarts=h.starts.length;}
- for(const region of p.limbRegionStatus){const m=w.medical?.find(m=>m.id===region.caseId);if(m)region.status=m.status;}
+ for(const region of p.limbRegionStatus){const m=medicalById(w,region.caseId);if(m)region.status=m.status;}
  return p;
 }
 export function careerWindow(h,day){const p=h.racingDurability;if(!p)return {remainingDays:null,end:null,started:false,expired:false};return {remainingDays:p.absoluteRaceEndDate==null?null:Math.max(0,p.absoluteRaceEndDate-day),end:p.absoluteRaceEndDate,started:p.firstRaceDate!=null,expired:p.absoluteRaceEndDate!=null&&day>=p.absoluteRaceEndDate};}
