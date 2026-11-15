@@ -6,6 +6,7 @@ import { LOCI, incompatibleGenotypes } from './genetics.js';
 import { upgrade } from './upgrade.js';
 import {RULES,COUNTRIES,SKILLS} from './rules.js';
 export function validate(w){
+ if(w?._uiView)throw Error('This is a display snapshot. The complete saved archive must be loaded before saving or exporting.');
  if(w?.storageRevision!=null&&(!Number.isSafeInteger(w.storageRevision)||w.storageRevision<0))throw Error('Invalid save revision.');
  if(!w||w.schema!==RULES.schema)throw Error('Unsupported save version. Original data has not been changed.');
  if(!Number.isSafeInteger(w.day)||w.day<0||!Number.isInteger(w.rng)||w.rng<=0||!Number.isSafeInteger(w.sequence)||!COUNTRIES[w.country]||!/^[-]?\d+$/.test(w.balance)||!w.horses||!w.owners?.player)throw Error('Corrupt world header.');
@@ -53,7 +54,7 @@ export function validate(w){
   const seen=new Set();for(const start of h.starts){if(!w.results[start.resultId]||seen.has(start.resultId)||!/^\d+$/.test(start.prize)||(start.outcome==='Pulled up'?start.place!==null||start.prize!=='0'||start.time!==null:!Number.isInteger(start.place)||start.place<1))throw Error('Invalid career start.');seen.add(start.resultId);}
  }
  for(const f of w.fixtures){if(!Number.isInteger(f.day)||!COUNTRIES[f.country]||!Array.isArray(f.entries)||!['scheduled','running','completed','closed','canceled'].includes(f.status))throw Error('Invalid fixture.');for(const e of f.entries)if(!w.horses[e.horseId]||!jockeys.has(e.jockeyId)||!w.owners[e.owner])throw Error('Invalid race entry.');if(f.resultId&&!w.results[f.resultId])throw Error('Missing committed result.');}
- for(const [key,r] of Object.entries(w.results)){if(r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
+ for(const [key,r] of Object.entries(w.results)){if(r._uiDeferred||r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
  for(const r of Object.values(w.results))for(const row of r.rows){const h=w.horses[row.horseId];if(!h.starts.some(s=>s.resultId===r.id)&&!h.careerQuarantine?.some(q=>q.original.resultId===r.id))throw Error('Completed result missing its official career start.');}
  for(const t of w.travel)if(!w.horses[t.horseId]||!COUNTRIES[t.origin]||!COUNTRIES[t.destination]||t.readyDay<t.arrivalDay||t.arrivalDay<t.departureDay)throw Error('Invalid transport booking.');
  for(const n of w.news)if(n.resultId&&!w.results[n.resultId]||n.horseIds.some(id=>!w.horses[id]))throw Error('News refers to a missing source.');
