@@ -77,7 +77,13 @@ function validateLegacy(w) {
  if(!w||![1,2,3,5,6,7].includes(w.schema)||!w.horses||!w.owners||!Array.isArray(w.fixtures)||!Array.isArray(w.listings)||!Array.isArray(w.events))throw Error('Unsupported or corrupt save. Original career is unchanged.');
  // Full validation follows additive migration and the one-time career audit.
 }
-function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('first-light-careers',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
+function database(){return new Promise((resolve,reject)=>{
+ let settled=false;const r=indexedDB.open('first-light-careers',1),timer=setTimeout(()=>fail(Error('The save database did not respond. Close other game tabs and retry loading.')),15000);
+ function fail(error){if(settled)return;settled=true;clearTimeout(timer);reject(error);}
+ r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('snapshots'))r.result.createObjectStore('snapshots');};
+ r.onblocked=()=>fail(Error('The save database is blocked by another game tab. Close that tab and retry loading.'));
+ r.onsuccess=()=>{if(settled){r.result.close();return;}settled=true;clearTimeout(timer);r.result.onversionchange=()=>r.result.close();resolve(r.result);};r.onerror=()=>fail(r.error);
+});}
 async function dbRead(key){const db=await database();return new Promise((resolve,reject)=>{
  const tx=db.transaction('snapshots','readonly'),store=tx.objectStore('snapshots'),r=store.get(key);let value,failure;
  r.onsuccess=()=>{
@@ -92,10 +98,10 @@ async function dbRead(key){const db=await database();return new Promise((resolve
 export async function pack(text){if(typeof CompressionStream==='undefined')return text;return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob();}
 export async function unpack(data){if(typeof data==='string')return data;return new Response(data.stream().pipeThrough(new DecompressionStream('gzip'))).text();}
 let persistedBase=null;
-export async function saveCareer(w,{replace=false,preparedPatch=null}={}){
+export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null}={}){
  validate(w);
- const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest;
- const records=[];for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,persistedBase.base)):w,{delta})){const {payload,...meta}=part;records.push({...meta,checksum:snapshotHash(payload),payload:await pack(payload)});}
+ const deltaBase=persistedBase?.base||initialBase,delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&!!(preparedPatch||deltaBase);
+ const records=[];for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,deltaBase)):w,{delta})){const {payload,...meta}=part;records.push({...meta,checksum:snapshotHash(payload),payload:await pack(payload)});}
  const db=await database();let nextRevision;
  try{await new Promise((resolve,reject)=>{
   const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');let failure;
@@ -117,19 +123,27 @@ export async function saveCareer(w,{replace=false,preparedPatch=null}={}){
   tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(failure||tx.error);
  });w.storageRevision=nextRevision;persistedBase={revision:nextRevision,manifest:true,base:patchBase(w)};return nextRevision;}finally{db.close();}
 }
-async function readSnapshot(data){
+async function readSnapshot(data,{onProgress=()=>{}}={}){
  let w,manifest=false;
  if(data?.format==='manifest-records-v3'){
   let parts=null;
-  for(const chunk of data.records){const text=await unpack(chunk.payload);if(chunk.checksum&&chunk.checksum!==snapshotHash(text))throw Error('Autosave chunk checksum failed. Original career is unchanged.');const next=JSON.parse(text);if(chunk.kind==='parts-start'){if(parts)finishSnapshotParts(parts);parts=beginSnapshotParts(w,next);w=parts.world;}else if(chunk.kind==='parts-data'&&parts)applySnapshotPart(parts,chunk,next);else{if(parts){finishSnapshotParts(parts);parts=null;}if(chunk.kind==='base')w=next;else if(w&&chunk.kind==='patch')w=applyWorldPatch(w,next);else throw Error('Invalid snapshot chunk order.');}}
+  // Decompression is independent; application remains strictly ordered. Keep only
+  // a small batch decoded so large careers do not need a second world in memory.
+  for(let offset=0;offset<data.records.length;){
+   let end=offset+1;if(data.records[offset].kind?.startsWith('parts-'))while(end<data.records.length&&end<offset+8&&data.records[end].kind?.startsWith('parts-'))end++;
+   const batch=data.records.slice(offset,end),decoded=await Promise.all(batch.map(async chunk=>{const text=await unpack(chunk.payload);if(chunk.checksum&&chunk.checksum!==snapshotHash(text))throw Error('Autosave chunk checksum failed. Original career is unchanged.');return JSON.parse(text);}));
+   for(let i=0;i<batch.length;i++){const chunk=batch[i],next=decoded[i];if(chunk.kind==='parts-start'){if(parts)finishSnapshotParts(parts);parts=beginSnapshotParts(w,next);w=parts.world;}else if(chunk.kind==='parts-data'&&parts)applySnapshotPart(parts,chunk,next);else{if(parts){finishSnapshotParts(parts);parts=null;}if(chunk.kind==='base')w=next;else if(w&&chunk.kind==='patch')w=applyWorldPatch(w,next);else throw Error('Invalid snapshot chunk order.');}}
+   offset=end;onProgress({stage:'Reading saved records',done:offset,total:data.records.length});
+  }
   if(parts)finishSnapshotParts(parts);
   if(!w)throw Error('Snapshot base missing.');w.storageRevision=data.revision;manifest=true;
  }else if(data?.format==='first-light-packed-v2'){w=JSON.parse(await unpack(data.payload));w.storageRevision=data.revision;}
  else if(data?.format==='first-light-native-v1')w=data.world;
  else {w=decode(await unpack(data));w.storageRevision=0;}
- const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,base:patchBase(w)};return w;
+ onProgress({stage:'Checking saved career'});
+ const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,base:null};return w;
 }
-export async function loadCareer(){const data=await dbRead('current');if(data)return readSnapshot(data);const legacy=typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
+export async function loadCareer({onProgress=()=>{},includeLegacy=true}={}){onProgress({stage:'Opening saved career'});const data=await dbRead('current');if(data)return readSnapshot(data,{onProgress});const legacy=!includeLegacy||typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer(){const data=await dbRead('backup');if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
 
 export function exportCareerBlob(w){validate(w);return portableSnapshotBlob(w);}

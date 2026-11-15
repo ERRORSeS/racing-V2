@@ -17,7 +17,7 @@ import { putOnBreak, reviewBreak, startTherapy } from './recovery.js';
 import { cancelTravel } from './travel.js';
 import { markNews, respondToPress } from './media.js';
 import { prepareStarters, prospectCards } from './starters.js';
-import { COUNTRIES } from './rules.js';
+import { COUNTRIES,RULES } from './rules.js';
 import { buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss, setFieldDensity } from './world.js';
 import { ownedHorse } from './core.js';
 import { setCare, vet, farrier, retire, scheduledTraining, medicalDecision } from './care.js';
@@ -30,29 +30,32 @@ import { shell, setupView, raceEntryForm } from './ui.js';
 
 const app=document.querySelector('#app');mountGuide();
 let advancing=false,advanceStatus='';
-let world=null,notice='',busy=false,settingUp=false,replayTimer=null;
+let world=null,notice='',loadFailed=false,busy=false,settingUp=false,replayTimer=null;
 let draft={},catalog=prepareStarters(),starters=prospectCards(catalog);
 const state={tab:'Dashboard',selected:null,profileStack:[],profileTab:'Overview',query:'',page:0,countryFilter:'All',sexFilter:'All',sort:'name',raceCountry:'USA',resultId:null,replayFrame:0,replayPlaying:false,journalArchive:false,breeder:null,damId:null,sireId:null,newsCategory:'All',newsCountry:'All',raceMonth:'Upcoming'};
 function resetBreedingSelection(){Object.assign(state,{damId:null,sireId:null,breedingMethod:'natural',breedingBatchId:'',coverNotice:''});}
-function render(){document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus,advanceStatus},notice,busy&&!advancing);}
+function render(){if(!world&&loadFailed){showLoadFailure(notice);return;}document.documentElement.dataset.theme=world?.settings.theme||'light';app.innerHTML=!world||settingUp?setupView({...draft,hasCareer:!!world},starters,notice):shell(world,{...state,saveStatus,advanceStatus},notice,busy&&!advancing);}
 function stopReplay(){clearInterval(replayTimer);replayTimer=null;state.replayPlaying=false;}
 let backgroundWorker=null,requestSequence=0;const workerRequests=new Map();
+function failBackground(error){for(const r of workerRequests.values()){clearTimeout(r.timer);r.reject(error);}workerRequests.clear();backgroundWorker?.terminate();backgroundWorker=null;}
+function armLoadTimeout(request){clearTimeout(request.timer);request.timer=setTimeout(()=>failBackground(Error('Loading stopped responding. Your saved career has not been changed. Retry loading or restore the previous autosave.')),45000);}
 let fallbackChain=Promise.resolve();
 function receiveBackground({data}){
  const request=workerRequests.get(data.requestId);if(!request)return;
+ if(data.loading){if(request.type==='load')armLoadTimeout(request);const label=app.querySelector('#loading-status');if(label)label.textContent=`${data.loading.stage}…${data.loading.total?` ${data.loading.done}/${data.loading.total}`:''}`;return;}
  if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
- workerRequests.delete(data.requestId);
+ clearTimeout(request.timer);workerRequests.delete(data.requestId);
  if(data.error){const error=Error(data.error);error.committed=data.committed;request.reject(error);}else request.resolve(data);
 }
 function workerRequest(type,payload){
  if(!backgroundWorker&&typeof Worker!=='undefined'){
   try{backgroundWorker=new Worker(new URL('./time-worker.js',import.meta.url),{type:'module'});backgroundWorker.onmessage=receiveBackground;
-   backgroundWorker.onerror=error=>{for(const r of workerRequests.values())r.reject(Error(error.message||'Background work failed.'));workerRequests.clear();backgroundWorker.terminate();backgroundWorker=null;};
+   backgroundWorker.onerror=error=>failBackground(Error(error.message||'Background work failed.'));backgroundWorker.onmessageerror=()=>failBackground(Error('The saved career could not be transferred from the background loader. Retry loading.'));
   }catch{/* Cooperative task fallback below keeps older browsers usable. */}
  }
  return new Promise((resolve,reject)=>{
-  const requestId=++requestSequence,data={type,requestId,...payload};workerRequests.set(requestId,{resolve,reject});
-  if(backgroundWorker)backgroundWorker.postMessage(data);
+  const requestId=++requestSequence,data={type,requestId,...payload};const request={resolve,reject,type};workerRequests.set(requestId,request);if(type==='load')armLoadTimeout(request);
+  if(backgroundWorker){try{backgroundWorker.postMessage(data);}catch(error){clearTimeout(request.timer);workerRequests.delete(requestId);reject(error);}}
   else fallbackChain=fallbackChain.then(async()=>{const {runBackgroundJob}=await import('./background-jobs.js');await runBackgroundJob(structuredClone(data),message=>receiveBackground({data:message}),{cooperative:true});}).catch(error=>receiveBackground({data:{requestId,error:error.message}}));
  });
 }
@@ -93,6 +96,7 @@ app.addEventListener('click',async e=>{
     try{await autosaves.flush();const recovered=await backupCareer();world=(await workerRequest('restore',{world:recovered})).world;rememberSavedWorld(world);state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
     catch(error){notice=error.message;}finally{actionPending=false;render();}return;
   }
+  if(a==='reload-career'){location.reload();return;}
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
   if(a==='reproductive-profile'){openHorse(id);state.profileTab='Breeding';render();return;}
@@ -118,7 +122,6 @@ app.addEventListener('click',async e=>{
   if(a==='breeder-directory'){state.breeder=null;render();return;}
   if(a==='export'){exportCareer();return;}
   if(a==='retry-save'){try{await autosaves.flush();}catch(error){notice=error.message;}render();return;}
-  if(a==='reload-career'){location.reload();return;}
   if(a==='new-career'&&advancing){notice='Wait for the queued skips before creating another career.';render();return;}
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(['day','week','month'].includes(a)){await advance(a==='day'?1:a==='week'?7:30);return;}
@@ -223,6 +226,13 @@ app.addEventListener('change',async e=>{
     finally{busy=false;render();(app.querySelector('.notice')||app.querySelector('main [role="status"]'))?.scrollIntoView({block:'center'});}
   }
 });
-app.innerHTML='<main><p role="status">Loading your saved career…</p></main>';
-try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career (.json or .jsonl)<input id="import" type="file" aria-label="Choose career backup"></label><button data-action="restore">Restore previous autosave</button></main>`;}
-if(world){rememberSavedWorld(world);}if(world||!notice)render();
+app.innerHTML='<main><p id="loading-status" role="status">Loading your saved career…</p><p>Your saved progress is kept intact while it loads.</p></main>';
+let startupNeedsSave=false;
+try{
+ let loaded=await workerRequest('load',{});
+ if(!loaded.world){const legacyText=localStorage.getItem(RULES.saveKey);if(legacyText)loaded=await workerRequest('load',{legacyText});}
+ world=loaded.world;startupNeedsSave=!!loaded.needsSave;if(world)state.raceCountry=world.country;
+}catch(error){showLoadFailure(error.message);}
+function showLoadFailure(message){loadFailed=true;notice=message;app.innerHTML=`<main><p role="alert">${message.replace(/[<>]/g,'')} Your saved career has not been overwritten. Retry loading, import a backup or restore the previous autosave.</p><button data-action="reload-career">Retry loading</button><label>Import career (.json or .jsonl)<input id="import" type="file" aria-label="Choose career backup"></label><button data-action="restore">Restore previous autosave</button></main>`;}
+
+if(world)rememberSavedWorld(world);if(world||!notice)render();if(world&&startupNeedsSave)autosaves.schedule(world);
