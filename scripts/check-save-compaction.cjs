@@ -1,0 +1,19 @@
+const {chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});try{
+ const context=await browser.newContext(),page=await context.newPage();await page.goto('http://127.0.0.1:5173/dist/');await page.locator('#import').waitFor();
+ console.log(await page.evaluate(async()=>{
+  const r=await(await fetch('./release.json')).json(),b=`./${r.assetBase}/`,{createWorld}=await import(b+'world.js'),{saveCareer,loadCareer,backupCareer}=await import(b+'storage.js'),{patchBase,worldPatch}=await import(b+'world-patch.js');
+  const w=createWorld({country:'USA',seed:'save-compaction',historyYears:0,creativeMode:true,starterEducation:'race_ready',starters:[{}]}),ids=Object.keys(w.horses),results=JSON.stringify(w.results);await saveCareer(w,{replace:true});
+  const header=key=>new Promise((resolve,reject)=>{const q=indexedDB.open('first-light-careers',1);q.onsuccess=()=>{const db=q.result,tx=db.transaction('snapshots','readonly'),get=tx.objectStore('snapshots').get(key);get.onsuccess=()=>resolve(get.result);tx.oncomplete=()=>db.close();tx.onerror=()=>reject(tx.error);};});
+  let previousDepth=0,compacted=0;for(let i=0;i<30;i++){const base=patchBase(w,{identity:true});w.stableName=`Revision ${i}`;await saveCareer(w,{preparedPatch:worldPatch(w,base)});const h=await header('current');if(i&&h.deltaDepth<previousDepth)compacted++;previousDepth=h.deltaDepth;}
+  const restored=await loadCareer(),backup=await backupCareer();if(!compacted||restored.stableName!=='Revision 29'||backup.stableName!=='Revision 28'||JSON.stringify(Object.keys(restored.horses))!==JSON.stringify(ids)||JSON.stringify(restored.results)!==results)throw Error('Compaction changed the career or lost the previous checkpoint');
+  window.compactionFixture=restored;return {writes:31,compacted,revision:restored.storageRevision,deltaDepth:(await header('current')).deltaDepth,historyAndBackupPreserved:true};
+ }));
+ await context.route('**/storage.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text()).replace('const text=await unpack(chunk.payload);','await new Promise(resolve=>setTimeout(resolve,15));const text=await unpack(chunk.payload);')});});
+ console.log(await page.evaluate(async()=>{
+  const r=await(await fetch('./release.json')).json(),base=new URL(`./${r.assetBase}/`,location.href).href,{saveCareer,loadCareer}=await import(base+'storage.js'),w=window.compactionFixture;
+  let startedResolve;const started=new Promise(resolve=>startedResolve=resolve),url=URL.createObjectURL(new Blob([`import {loadCareer} from '${base}storage.js';let started=false;const w=await loadCareer({onProgress:p=>{if(!started&&p.stage==='Reading saved records'){started=true;self.postMessage({started:true});}}});self.postMessage({name:w.stableName,revision:w.storageRevision,horses:Object.keys(w.horses).length});`],{type:'text/javascript'})),worker=new Worker(url,{type:'module'});
+  const reading=new Promise((resolve,reject)=>{worker.onmessage=e=>{if(e.data.started)startedResolve();else resolve(e.data);};worker.onerror=e=>reject(Error(e.message));});await started;
+  w.stableName='Concurrent checkpoint 1';await saveCareer(w,{replace:true});w.stableName='Concurrent checkpoint 2';await saveCareer(w,{replace:true});const read=await reading,latest=await loadCareer();worker.terminate();URL.revokeObjectURL(url);if(read.name!=='Revision 29'||read.revision!==31||latest.stableName!=='Concurrent checkpoint 2'||read.horses!==Object.keys(latest.horses).length)throw Error('Streaming recovery mixed revisions or lost chunks during garbage collection');return {concurrentReadRevision:read.revision,currentRevision:latest.storageRevision,consistentReadDuringTwoReplacements:true};
+ }));
+ }finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});
