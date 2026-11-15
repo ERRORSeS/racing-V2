@@ -14,8 +14,8 @@ export function patchBase(w,{identity=false}={}){return {
  completed:new Set(w.fixtures.filter(f=>f.status==='completed').map(f=>f.id)),
  archives:identity?null:new Map(Object.values(w.horses).filter(h=>h.owner==='archive').map(h=>[h.id,archiveStamp(h)]))
 };}
-export function worldPatch(w,base){return {
- ...w,...Object.fromEntries(Object.entries(base.lengths).map(([key,length])=>[key,w[key].slice(length)])),
+export function worldPatch(w,base){const {_uiView,...source}=w;return {
+ ...source,...Object.fromEntries(Object.entries(base.lengths).map(([key,length])=>[key,w[key].slice(length)])),
  results:Object.fromEntries(Object.entries(w.results).filter(([id])=>!base.results.has(id))),
  fixtures:w.fixtures.filter(f=>!base.completed.has(f.id)),
  horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
@@ -28,7 +28,7 @@ export function applyWorldPatch(w,patch){
  const fixtures=new Map(w.fixtures.map(f=>[f.id,f]));for(const f of patch.fixtures)fixtures.set(f.id,f);
  const horses={...w.horses};for(const [id,h]of Object.entries(patch.horses)){
   if(!h._historyAppend){horses[id]=h;continue;}
-  const {_historyAppend,_partialHorse,...changed}=h,next=_partialHorse?{...w.horses[id],...changed}:changed;for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=[...(w.horses[id]?.[key]||[]),...h[key]];horses[id]=next;
+  const {_historyAppend,_partialHorse,...changed}=h,next=_partialHorse?{...w.horses[id],...changed}:changed;for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=(w.horses[id]?.[key]||[]).concat(h[key]);horses[id]=next;
  }
- return {...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,[...w[key],...patch[key]]])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};
+ return {...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].concat(patch[key])])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};
 }
