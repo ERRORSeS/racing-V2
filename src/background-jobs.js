@@ -9,7 +9,7 @@ let residentWorld=null;
 export async function runBackgroundJob(data,send,{cooperative=false}={}){
  const emit=message=>{if(data.uiView){if(message.world)message.world=compactWorld(message.world);if(message.committed)message.committed=compactWorld(message.committed);if(message.patch)message.patch=compactPatch(message.patch,residentWorld);}send(message);};
  const previousResident=['import','save-patch','export','get-result','horse-history'].includes(data.type)?residentWorld:null;
- let checkpointWritten=false,base=null;
+ let checkpointWritten=false,base=null,reopened=false;
  try{
   if(data.type==='load'){
    const onProgress=loading=>emit({requestId:data.requestId,loading});let world=await loadCareer({onProgress,includeLegacy:false}),needsSave=false;
@@ -42,13 +42,14 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    const next=applyWorldPatch(residentWorld,data.patch);const revision=await saveCareer(next,{preparedPatch:data.patch});residentWorld=next;emit({requestId:data.requestId,saved:true,revision});return;
   }
   if(data.type==='save'){const revision=await saveCareer(data.world);residentWorld=data.world;emit({requestId:data.requestId,saved:true,revision});return;}
+  if((data.type==='advance'||!data.type)&&!data.world&&!residentWorld){emit({requestId:data.requestId,recoveringCheckpoint:true});residentWorld=await loadCareer({includeLegacy:false,onProgress:loading=>emit({requestId:data.requestId,loading})});reopened=!!residentWorld;}
   const world=data.type==='create'?createWorld(data.config):data.type==='import'?(data.file?await importCareerFile(data.file):decode(data.text)):data.world||residentWorld;
   if(data.type==='import'||data.type==='restore')ensureCalendarHorizon(world);
   if(data.type==='import'&&!world.pedigreeHistoryVersion&&world.settings.historyYears>0)seedPedigreeCareers(world);
   if(data.type==='advance'||!data.type){
    if(world)base=patchBase(world);
    if(!world)throw Error('Reload the saved career before advancing.');
-   if(data.expectedRevision!=null&&data.expectedRevision!==(world.storageRevision||0))throw Error('Simulation snapshot differs from the last saved revision. Reload before advancing.');
+   if(data.expectedRevision!=null&&data.expectedRevision!==(world.storageRevision||0)){const error=Error(reopened?'The latest saved checkpoint has been restored. Check the date, then click advance again.':'Simulation snapshot differs from the last saved revision. Reload before advancing.');if(reopened)error.committed=world;throw error;}
    if(!Number.isSafeInteger(data.days)||data.days<1||data.days>36000)throw Error('Advance 1–36,000 days at a time.');
    if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;}
    for(let done=0;done<data.days;){
@@ -60,7 +61,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    }
   }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'||data.type==='restore'});
   residentWorld=world;emit(base?{requestId:data.requestId,patch:worldPatch(world,base),saved:true}:{requestId:data.requestId,world,saved:true});
- }catch(error){let committed=null;if(checkpointWritten){emit({requestId:data.requestId,recoveringCheckpoint:true});residentWorld=null;base=null;releaseCareerBaseline();try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(['import','save-patch','export','get-result','horse-history'].includes(data.type)?previousResident:null);emit({requestId:data.requestId,error:error.message,committed});}
+ }catch(error){let committed=error.committed||null;if(checkpointWritten){emit({requestId:data.requestId,recoveringCheckpoint:true});residentWorld=null;base=null;releaseCareerBaseline();try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(['import','save-patch','export','get-result','horse-history'].includes(data.type)?previousResident:null);emit({requestId:data.requestId,error:error.message,committed});}
 }
 function yieldTask(){if(globalThis.scheduler?.yield)return scheduler.yield();return new Promise(resolve=>{const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(null);});}
 
