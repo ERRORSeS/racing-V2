@@ -6,6 +6,7 @@ import { advanceWorld, createWorld } from './world.js';
 import { saveCareer, loadCareer, decode, importCareerFile } from './storage.js';
 let residentWorld=null;
 export async function runBackgroundJob(data,send,{cooperative=false}={}){
+ const previousResident=residentWorld;
  let checkpointWritten=false,base=null;
  try{
   if(data.type==='load'){
@@ -35,7 +36,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    }
   }else await saveCareer(world,{replace:data.type==='create'||data.type==='import'||data.type==='restore'});
   residentWorld=world;send(base?{requestId:data.requestId,patch:worldPatch(world,base),saved:true}:{requestId:data.requestId,world,saved:true});
- }catch(error){let committed=null;if(checkpointWritten){try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed;send({requestId:data.requestId,error:error.message,committed});}
+ }catch(error){let committed=null;if(checkpointWritten){try{committed=await loadCareer();}catch{/* Last UI snapshot remains available if storage is inaccessible. */}}residentWorld=committed||(data.type==='import'?previousResident:null);send({requestId:data.requestId,error:error.message,committed});}
 }
 function yieldTask(){if(globalThis.scheduler?.yield)return scheduler.yield();return new Promise(resolve=>{const c=new MessageChannel();c.port1.onmessage=()=>{c.port1.close();c.port2.close();resolve();};c.port2.postMessage(null);});}
 
