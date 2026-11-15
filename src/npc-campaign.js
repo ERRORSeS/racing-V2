@@ -1,7 +1,8 @@
 import {seed} from './random.js';
 import {age,clamp} from './rules.js';
 import {racingWindowReason} from './durability.js';
-const draw=(w,h,key)=>seed(`${w.seed}:${h.id}:campaign:${key}`)/4294967296;
+const campaignDraws=new WeakMap();
+function draw(w,h,key){let cached=campaignDraws.get(h);if(!cached||cached.seed!==w.seed||cached.id!==h.id){cached={seed:w.seed,id:h.id,values:new Map()};campaignDraws.set(h,cached);}if(!cached.values.has(key))cached.values.set(key,seed(`${w.seed}:${h.id}:campaign:${key}`)/4294967296);return cached.values.get(key);}
 export const CAMPAIGN_STATES=['Unstarted','Initial training','Conditioning','Trialing or qualifying','Active racing campaign','Post-race recovery','Freshening break','Veterinary break','Rehabilitation','Retired from racing'];
 export function raceSpacing(w,h,distance=h.distance){
  const recovery=h.skills.recovery??50,strain=(h.racingDurability?.cumulativeRacingStrain||0)+(h.racingDurability?.preRacingStrain||0);

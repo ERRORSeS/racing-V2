@@ -76,7 +76,7 @@ export function enterRace(w,fixtureId,horseId,jockeyId,tactic='stalk') {
 }
 export function scratchRace(w,fixtureId,horseId) {
   ownedHorse(w,horseId);const f=w.fixtures.find(x=>x.id===fixtureId);if(!f||f.status!=='scheduled')throw Error('Race is no longer open.');
-  const e=f.entries.find(x=>x.horseId===horseId);if(!e)throw Error('No entry to scratch.');f.entries=f.entries.filter(x=>x!==e);invalidateSchedule(w);event(w,'racing',`${w.horses[horseId].name} withdrawn from ${f.title}. Voluntary withdrawal fees retained.`,horseId);
+  const e=f.entries.find(x=>x.horseId===horseId);if(!e)throw Error('No entry to scratch.');f.entries=f.entries.filter(x=>x!==e);invalidateSchedule(w,{population:false});event(w,'racing',`${w.horses[horseId].name} withdrawn from ${f.title}. Voluntary withdrawal fees retained.`,horseId);
 }
 export function travel(w,horseId,country,options={}){return bookTravel(w,horseId,country,null,false,options);}
 export function autoField(w,f,target=null) {
@@ -98,7 +98,7 @@ function reassignNpcReserves(w,f){
   const clashes=w.fixtures.filter(other=>other.id!==f.id&&other.status==='scheduled'&&Math.abs(other.day-f.day)<RULES.minRaceRest&&other.entries.some(e=>e.horseId===h.id));
   if(!clashes.length||clashes.some(other=>other.isAnnualMajor||other.qualification||other.entries.length<=(other.minStarters||2)))continue;
   for(const other of clashes)other.entries=other.entries.filter(e=>e.horseId!==h.id);
-  invalidateSchedule(w);event(w,'racing',`${h.name} reassigned by its NPC stable to ${f.title}; other fields retain their minimum runners.`,h.id);autoField(w,f,f.entries.length+1);
+  invalidateSchedule(w,{population:false});event(w,'racing',`${h.name} reassigned by its NPC stable to ${f.title}; other fields retain their minimum runners.`,h.id);autoField(w,f,f.entries.length+1);
  }
 }
 export function resolveRace(w,fixtureId) {
@@ -106,10 +106,10 @@ export function resolveRace(w,fixtureId) {
   if(f.resultId)return w.results[f.resultId];
   if(f.status!=='scheduled'||f.day>w.day)throw Error('Race is not due.');
   // Revalidate booked entries without treating their own booking as a clash.
-  const booked=f.entries;f.entries=[];if(!f.historical)invalidateSchedule(w);
+  const booked=f.entries;f.entries=[];if(!f.historical)invalidateSchedule(w,{population:false});
   for(const e of booked){const h=w.horses[e.horseId],reason=eligibility(w,h,f);if(reason){if(e.owner==='player'&&e.fee)transact(w,BigInt(e.fee),'Welfare scratch refund',f.id);event(w,'racing',`${h.name} scratched from ${f.title}: ${reason}`,h.id);}else{f.entries.push(e);reserveInIndex(w,f,e);}}
   autoField(w,f);if(f.entries.length<(f.minStarters||2))reassignNpcReserves(w,f);if(f.entries.length<(f.minStarters||2)){addCircuitReserves(w,f,(f.targetFieldSize||8)-f.entries.length);autoField(w,f);}
-  if(f.entries.length<(f.minStarters||2)){f.day=w.day+7;f.phase='Rescheduled';f.reschedules=(f.reschedules||0)+1;f.delayReason='Awaiting enough legally eligible, sound runners; entry fees and nominations retained.';invalidateSchedule(w);event(w,'racing',`${f.title} moved seven days: awaiting an eligible field. Existing nominations and fees retained.`);return null;}
+  if(f.entries.length<(f.minStarters||2)){f.day=w.day+7;f.phase='Rescheduled';f.reschedules=(f.reschedules||0)+1;f.delayReason='Awaiting enough legally eligible, sound runners; entry fees and nominations retained.';invalidateSchedule(w,{population:false});event(w,'racing',`${f.title} moved seven days: awaiting an eligible field. Existing nominations and fees retained.`);return null;}
   f.status='running';f.phase='Running';
   f.fieldSnapshot={day:w.day,entries:structuredClone(f.entries)};
   const runners=f.entries.map((e,index)=>{

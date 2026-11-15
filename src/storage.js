@@ -120,7 +120,8 @@ const MAX_DELTA_WRITES=24,MAX_MANIFEST_CHUNKS=1024;
 export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null}={}){
  validate(w);
  const deltaBase=persistedBase?.base||initialBase,delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS&&!!(preparedPatch||deltaBase);
- const records=[];for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,deltaBase)):w,{delta})){const {payload,...meta}=part;records.push({...meta,checksum:snapshotHash(payload),payload:await pack(payload)});}
+ const records=[];let batch=[];
+ for(const part of snapshotParts(delta?(preparedPatch||worldPatch(w,deltaBase)):w,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];}}await Promise.all(batch);
  const db=await database();let nextRevision,writtenManifest;
  try{await new Promise((resolve,reject)=>{
   const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),previous=store.get('current');let failure;

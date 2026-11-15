@@ -1,3 +1,4 @@
+import {registerPopulationHorse} from './simulation-population.js';
 import {npcCampaign} from './npc-campaign.js';
 import {nameLimit} from './naming.js';
 import { initializeDurability } from './durability.js';
@@ -21,7 +22,7 @@ export function horse(w,owner,country,options={},depth=0,born=-720){
  h.ownership=[{owner,day:w.day,price:'0',seller:null}];h.studFee='500000';h.coat.grayGene=h.coat.gray?'Gg':'gg';h.coat.tobianoGene=options.tobiano?'Tt':'tt';
  h.traits=[...new Set(Array.from({length:3},()=>pick(w,TRAITS)))];
  h.surface=options.surface||COUNTRIES[country].surface;h.distance=options.distance||pick(w,[1200,1600,2000,2400]);if(options.base==='chestnut')h.coat.extension='ee';if(options.base==='black'){h.coat.extension='EE';h.coat.agouti='aa';}if(options.base==='bay'){h.coat.extension='EE';h.coat.agouti='AA';}if(options.shade)h.coat.shade=options.shade;if(options.gray!=null)h.coat.gray=options.gray;if(options.face)h.coat.face=options.face;h.coat.tobiano=!!options.tobiano;h.coat.grayGene=h.coat.gray?'Gg':'gg';
- w.horses[h.id]=h;registerName(w,h);invalidateSchedule(w);updateFamily(w,h);
+ w.horses[h.id]=h;registerPopulationHorse(w,h);registerName(w,h);if(owner!=='archive')invalidateSchedule(w,{population:true,full:false});updateFamily(w,h);
  if(options.sireId||options.damId){h.sire=options.sireId||null;h.dam=options.damId||null;}else if(depth>0){const sire=horse(w,'archive',country,{sex:'colt'},depth-1,born-1800),dam=horse(w,'archive',country,{sex:'filly'},depth-1,born-2160);sire.status=dam.status='retired';h.sire=sire.id;h.dam=dam.id;
 }
  initializeTraits(w,h,true);initializeDevelopment(w,h,true);applyStarterOverrides(h,options);h.distance=options.distance||distanceFromGenome(h);initializeYoungstock(w,h,{fresh:true});initializeForm(w,h);initializeRacingYears(w,h);initializeDurability(w,h).historyInitialized=true;h.safeRacingYears=Math.min(h.safeRacingYears,h.racingDurability.individualRacingLongevity,5);initializeAppraisal(w,h);
