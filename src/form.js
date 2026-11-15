@@ -4,7 +4,8 @@ const draw=key=>seed(key)/4294967296;
 export function initializeForm(w,h){
  if(h.reliability)return;
  const n=draw(`${w.seed}:${h.id}:consistency`),base=clamp(62+draw(`${h.id}:reliability`)*33-(n<.035?55:0),10,98);
- h.reliability={version:4,baseConsistency:base,dailyVolatility:.015+(100-base)*.0012,currentForm:0,formMemory:0,lastFormUpdateDay:w.day,recentRaceOutputs:[],observedConfidence:0,origin:'Persisted simulation tendency; public estimate requires multiple comparable runs'};
+ const parents=[w.horses[h.sire],w.horses[h.dam]].filter(p=>p?.reliability),inherited=parents.length?parents.reduce((n,p)=>n+p.reliability.baseConsistency,0)/parents.length:null,consistency=inherited==null?base:clamp(inherited*.65+base*.35,10,98);
+ h.reliability={version:9,inheritedConsistency:inherited,baseConsistency:consistency,dailyVolatility:.015+(100-consistency)*.0012,currentForm:0,formMemory:0,lastFormUpdateDay:w.day,recentRaceOutputs:[],observedConfidence:0,origin:'Persisted simulation tendency; public estimate requires multiple comparable runs'};
 }
 export function updateForm(w,h){
  initializeForm(w,h);const p=h.reliability;

@@ -1,3 +1,5 @@
+import {restorePreDebutSoundness} from './durability.js';
+import {initializeV9World} from './npc-campaign.js';
 import { initializeReproduction } from './reproduction.js';
 import { initializeDurability } from './durability.js';
 import { initializeRacingYears } from './racing-years.js';
@@ -14,7 +16,7 @@ export function upgrade(w) {
   if(![1,2,3,5,6,7].includes(w.schema))throw Error('Unsupported save version. Original data has not been changed.');
   w.settings??={registryMode:'official',injuryFrequency:1,fatalities:false,operatingCosts:false,instantTravel:true,avoidCloseBreeding:true,autoRace:false,debug:false,expandedGenetics:false,theme:'light'};
   w.settings={registryMode:'official',injuryFrequency:1,fatalities:false,operatingCosts:false,instantTravel:true,avoidCloseBreeding:true,autoRace:false,debug:false,expandedGenetics:false,theme:'light',...w.settings};
-  w.settings.fieldDensity??='Balanced';w.settings.creativeMode??=false;w.settings.revealPotential??=false;w.settings.historyYears??=10;
+  w.settings.namingPreset??='Long OXO';w.settings.fieldDensity??='Balanced';w.settings.creativeMode??=false;w.settings.revealPotential??=false;w.settings.historyYears??=10;
   w.auctionEvents??=[];w.auctionGenerationLog??=[];w.qualifyingPoints??=[];w.calendarGenerationLog??=[];w.travel??=[];w.news??=[];w.awards??=[];w.trackRecords??=[];w.studBooks??=[];w.notifications??=[];w.followedStables??=[];w.pressResponses??=[];w.followedHorses??=[];w.bookmarks??=[];w.historySeeded??=false;
   w.results??={};w.medical??=[];w.visits??=[];w.coverings??=[];w.freezer??=[];w.staff??=[];w.jockeys??=[];w.journalClearedThrough??=0;
   for(const [key,o] of Object.entries(w.owners)){o.balance??=key==='archive'?'0':'5000000000';o.reputation??=50;}
@@ -35,5 +37,5 @@ export function upgrade(w) {
   if(previousSchema<6&&Object.keys(w.horses).length)rotateAuctions(w);
   if(w.fixtures.length){ensureRaceTypeCoverage(w);ensureYoungProgression(w);openGradedRaceAges(w);}
   for(const f of w.fixtures)if(f.status==='scheduled'&&f.classId!=='maiden'&&f.grade!=='Maiden'&&f.conditions?.minWins>0){f.conditions.minPlacings??=f.conditions.minWins;delete f.conditions.minWins;}
-  initializeReproduction(w);w.schema=RULES.schema;return w;
+  initializeReproduction(w);w.schema=RULES.schema;initializeV9World(w);restorePreDebutSoundness(w);return w;
 }

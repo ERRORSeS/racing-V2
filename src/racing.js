@@ -1,3 +1,5 @@
+import {npcRaceReason,raceSpacing,planCampaignTarget,campaignDay} from './npc-campaign.js';
+import {lengthsPerSecond,finishAwards,marginText} from './race-margins.js';
 import { racingWindowReason } from './durability.js';
 import { settleV7Race } from './v7.js';
 import { changeFatigue } from './fatigue.js';
@@ -49,8 +51,9 @@ function entryRequirements(w,h,f) {
   if(conditions.bredIn&&h.country!==conditions.bredIn)return 'Birth-jurisdiction restriction.';
   if(age(h,f.day)===2&&f.distance>2000)return 'Distance is restricted to mature runners.';
   if(f.grade==='Maiden'&&career(h).wins>0)return 'Maiden races are for horses without a win.';
+  if(!f.historical&&age(h,f.day)===2&&(f.tier||0)>=5&&top3<((f.tier||0)>=6?2:1))return 'Juvenile Group/Grade entry requires verified prior top-three results.';
   if(h.lastRaceDay!=null&&f.day-h.lastRaceDay<RULES.minRaceRest)return 'At least five days recovery between races.';
-  return null;
+  return npcRaceReason(w,h,f);
 }
 const nominationChecks=new WeakMap();
 export function eligibility(w,h,f,options={}){
@@ -60,7 +63,7 @@ export function eligibility(w,h,f,options={}){
  if(reason)return reason;
   if((f.entries||[]).some(e=>e.horseId===h.id))return 'Already entered.';
   if((f.entries||[]).length>=f.maxRunners)return 'Field is full.';
-  if(!options.ignoreBookings&&(scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.fixtureId!==f.id&&Math.abs(b.day-f.day)<RULES.minRaceRest))return 'Conflicting race or recovery period.';
+  if(!f.historical&&!options.ignoreBookings&&(scheduleIndex(w).horseBookings.get(h.id)||[]).some(b=>b.fixtureId!==f.id&&Math.abs(b.day-f.day)<(!['player','archive'].includes(h.owner)&&!f.historical?raceSpacing(w,h,f.distance):RULES.minRaceRest)))return 'Conflicting race or recovery period.';
   if(f.country==='Japan'&&h.gear.accessory==='Hood')return 'Hood is restricted by this simulated jurisdiction.';
   return null;
 }
@@ -79,12 +82,12 @@ export function travel(w,horseId,country,options={}){return bookTravel(w,horseId
 export function autoField(w,f,target=null) {
   const goal=Math.min(f.maxRunners,target??f.targetFieldSize??RULES.fieldSize);if(f.entries.length>=goal)return;ensureJockeys(w,f,goal-f.entries.length);
   const index=scheduleIndex(w),candidates=(index.npcByCountry.get(f.country)||[]).filter(h=>!eligibility(w,h,f));
-  candidates.sort((a,b)=>b.fitness-a.fitness||a.id.localeCompare(b.id));
+  candidates.sort((a,b)=>(!f.historical&&(f.tier||0)>=4?((observedRating(b)||0)-(observedRating(a)||0)||b.skills.speed-a.skills.speed):0)||b.fitness-a.fitness||a.id.localeCompare(b.id));
   let available=w.jockeys.filter(j=>!index.jockeyBookings.has(`${j.id}:${f.day}`));
   for(const h of candidates){if(f.entries.length>=Math.min(f.maxRunners,target??f.targetFieldSize??RULES.fieldSize))break;
     if(!available.length)break;const j=available[integer(w,0,available.length-1)];
     try{charge(w,h,(BigInt(f.fee)+BigInt(j.fee)).toString(),'Race entry',f.id);}catch{continue;}
-    const entry={horseId:h.id,owner:h.owner,jockeyId:j.id,tactic:pick(w,TACTICS),carriedWeight:carriedWeight(h,f),gear:structuredClone(h.gear)};f.entries.push(entry);reserveInIndex(w,f,entry,index);available=available.filter(candidate=>candidate.id!==j.id);
+    const entry={horseId:h.id,owner:h.owner,jockeyId:j.id,tactic:pick(w,TACTICS),carriedWeight:carriedWeight(h,f),gear:structuredClone(h.gear)};f.entries.push(entry);reserveInIndex(w,f,entry,index);if(!f.historical)planCampaignTarget(w,h,f);available=available.filter(candidate=>candidate.id!==j.id);
   }
 }
 function reassignNpcReserves(w,f){
@@ -103,7 +106,7 @@ export function resolveRace(w,fixtureId) {
   if(f.resultId)return w.results[f.resultId];
   if(f.status!=='scheduled'||f.day>w.day)throw Error('Race is not due.');
   // Revalidate booked entries without treating their own booking as a clash.
-  const booked=f.entries;f.entries=[];invalidateSchedule(w);
+  const booked=f.entries;f.entries=[];if(!f.historical)invalidateSchedule(w);
   for(const e of booked){const h=w.horses[e.horseId],reason=eligibility(w,h,f);if(reason){if(e.owner==='player'&&e.fee)transact(w,BigInt(e.fee),'Welfare scratch refund',f.id);event(w,'racing',`${h.name} scratched from ${f.title}: ${reason}`,h.id);}else{f.entries.push(e);reserveInIndex(w,f,e);}}
   autoField(w,f);if(f.entries.length<(f.minStarters||2))reassignNpcReserves(w,f);if(f.entries.length<(f.minStarters||2)){addCircuitReserves(w,f,(f.targetFieldSize||8)-f.entries.length);autoField(w,f);}
   if(f.entries.length<(f.minStarters||2)){f.day=w.day+7;f.phase='Rescheduled';f.reschedules=(f.reschedules||0)+1;f.delayReason='Awaiting enough legally eligible, sound runners; entry fees and nominations retained.';invalidateSchedule(w);event(w,'racing',`${f.title} moved seven days: awaiting an eligible field. Existing nominations and fees retained.`);return null;}
@@ -113,7 +116,7 @@ export function resolveRace(w,fixtureId) {
     const h=w.horses[e.horseId],j=w.jockeys.find(x=>x.id===e.jockeyId),values=Object.fromEntries(Object.keys(h.skills).map(k=>[k,Math.min(h.skills[k],usableCeiling(h,k,w.day))]));
     const familiarity=h.starts.filter(s=>s.jockeyId===j.id).length,mods=traitModifiers(h,{phase:'race',tactic:e.tactic,surface:f.surface,distance:f.distance,going:f.going,course:f.course,temperature:f.temperature,inPack:index>0,familiarJockey:familiarity>2});
     const surface=(.92+(values[f.surface]||50)/1000)*(1+(mods.values[f.surface]||0)+(mods.values.surface||0)),dist=1-Math.min(.15,Math.abs(h.distance-f.distance)/15000);
-    const aptitude=(12.5+values.speed*.068)*surface*dist*(.96+values.muscle*.0004)*(.94+h.fitness*.0006)*(e.gear.fit<70?.97:1)*(1+(mods.values.tack||0))*(.94+h.soundness*.0006)*MOOD_FACTORS[h.mood]*(1-h.fatigue*.0007)*(h.acuteStress?.97:1)*(1-Math.abs(h.condition-5)*.006)*(1-((e.carriedWeight||56)-56)*.002);
+    const aptitude=(16.5*(.5+values.speed*.008))*surface*dist*(.96+values.muscle*.0004)*(.94+h.fitness*.0006)*(e.gear.fit<70?.97:1)*(1+(mods.values.tack||0))*(.94+h.soundness*.0006)*MOOD_FACTORS[h.mood]*(1-h.fatigue*.0007)*(h.acuteStress?.97:1)*(1-Math.abs(h.condition-5)*.006)*(1-((e.carriedWeight||56)-56)*.002);
     const experience=Math.min(5,h.starts.length*.1);const gate=clamp((experience+values.gate+j.start+(100-h.spookiness)+values.confidence*.2)/3.2+(mods.values.gate||0)*100)/100;
     const formVariation=formFactor(w,h,f.id);
     return {e,h,j,values,mods,familiarity,flags:new Set(),formVariation,gate:index+1,distance:0,currentSpeed:0,energy:100,time:null,splits:[],speed:aptitude*formVariation,delay:(1-gate)*.8+(1-values.breakReaction/100)*.3,stamina:values.stamina};
@@ -157,17 +160,18 @@ export function resolveRace(w,fixtureId) {
     if(!f.historical&&(newStage||Math.round(clock*2)%20===0||runners.every(r=>r.time!==null||r.pulled)))frames.push({time:clock,stage,positions:[...runners].sort((a,b)=>a.time!==null&&b.time!==null?a.time-b.time:a.time!==null?-1:b.time!==null?1:b.distance-a.distance).map(r=>({horseId:r.h.id,distance:Math.min(f.distance,r.distance),energy:r.energy,speed:r.currentSpeed}))});
   }
   runners.sort((a,b)=>(a.time===null)-(b.time===null)||(a.time!==null?a.time-b.time:b.distance-a.distance)||a.gate-b.gate);
+  const awards=finishAwards(runners,f,RULES.purseShares);
   const resultId=id(w,'result'),rows=runners.map((r,i)=>{
-    const prize=r.time===null?'0':(BigInt(f.purse)*BigInt(Math.round((RULES.purseShares[i]||0)*100))/100n).toString();
-    return {readiness:{status:r.h.youngstock?.starting.status||'complete',completedDay:f.historical?r.h.born+720:r.h.youngstock?.starting.completedDay??w.day,clearance:'Race-Cleared',medicalCase:null,origin:f.historical?'generated_founder_history':'live pre-race check'},horseId:r.h.id,name:r.h.name,owner:r.e.owner,jockeyId:r.j.id,jockeyName:r.j.name,place:r.time===null?null:i+1,outcome:r.time===null?'Pulled up':'Finished',time:r.time,margin:r.time===null?null:(r.time-runners[0].time)*16/2.4,prize,gate:r.gate,tactic:r.e.tactic,carriedWeight:r.e.carriedWeight||56,formVariation:r.formVariation,effectiveSkills:r.values,traitInputs:r.mods.applied,gear:r.e.gear,splits:r.splits};
+    const {prize,place,margin,deadHeat}=awards[i];
+    return {readiness:{status:r.h.youngstock?.starting.status||'complete',completedDay:f.historical?r.h.born+720:r.h.youngstock?.starting.completedDay??w.day,clearance:'Race-Cleared',medicalCase:null,origin:f.historical?'generated_founder_history':'live pre-race check'},horseId:r.h.id,name:r.h.name,owner:r.e.owner,jockeyId:r.j.id,jockeyName:r.j.name,place,deadHeat,outcome:r.time===null?'Pulled up':'Finished',time:r.time,margin,marginLabel:place===1?(deadHeat?'Dead heat':'Winner'):marginText(margin),prize,gate:r.gate,tactic:r.e.tactic,carriedWeight:r.e.carriedWeight||56,formVariation:r.formVariation,effectiveSkills:r.values,traitInputs:r.mods.applied,gear:r.e.gear,splits:r.splits};
   });
   const highlights=frames.filter((_,i)=>i===0||i===Math.floor(frames.length/2)||i===frames.length-2).map(frame=>({time:frame.time,text:`${w.horses[frame.positions[0].horseId].name} leads at ${Math.round(frame.positions[0].distance)}m. The field is ${frame.positions.length} strong.`}));
   for(const ev of raceEvents)if(['slowBreak','boxedIn','paceDuel','lateKick','wideRun','pulledUp'].includes(ev.type))highlights.push({time:ev.time,text:ev.text});highlights.sort((a,b)=>a.time-b.time);
-  const finishers=rows.filter(row=>row.place!==null);
-  highlights.push({time:finishers[0]?.time??clock,text:finishers.length?`${finishers[0].name} wins in ${finishers[0].time.toFixed(2)} seconds.${finishers[1]?` ${finishers[1].name} finishes second, ${finishers[1].margin.toFixed(2)} lengths behind.`:' No other horse finished.'}`:'No finishers; no winner or purse is awarded.'});
-  const result={id:resultId,fixtureId:f.id,day:w.day,title:f.title,country:f.country,track:f.track,surface:f.surface,distance:f.distance,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,source:f.historical?'history seeded':'live',historical:!!f.historical,founderArchive:!!f.founderArchive,replayAvailable:!f.historical,events:raceEvents,rows,frames,highlights,incidents:runners.filter(r=>r.medical).map(r=>({horseId:r.h.id,medicalCase:r.medical.id,text:`Pulled up during the race: ${r.medical.diagnosis}; ${r.medical.severity}. Veterinary restrictions applied.`})),key:`${w.seed}:${f.id}:${w.rng}`};
+  const finishers=rows.filter(row=>row.place!==null),runnerUp=finishers.find(row=>row.place>1);
+  highlights.push({time:finishers[0]?.time??clock,text:finishers.length?`${finishers.filter(row=>row.place===1).map(row=>row.name).join(' and ')} ${finishers[0].deadHeat?'dead heat':'wins'} in ${finishers[0].time.toFixed(2)} seconds.${runnerUp?` ${runnerUp.name} finishes ${runnerUp.deadHeat?'joint ':''}${runnerUp.place===2?'second':`in place ${runnerUp.place}`}, ${marginText(runnerUp.margin)} behind.`:''}`:'No finishers; no winner or purse is awarded.'});
+  const result={simulationVersion:9,lengthsPerSecond:lengthsPerSecond(f),photoFinishToleranceSeconds:.005,id:resultId,fixtureId:f.id,day:w.day,title:f.title,country:f.country,track:f.track,surface:f.surface,distance:f.distance,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,source:f.historical?'history seeded':'live',historical:!!f.historical,founderArchive:!!f.founderArchive,replayAvailable:!f.historical,events:raceEvents,rows,frames,highlights,incidents:runners.filter(r=>r.medical).map(r=>({horseId:r.h.id,medicalCase:r.medical.id,text:`Pulled up during the race: ${r.medical.diagnosis}; ${r.medical.severity}. Veterinary restrictions applied.`})),key:`${w.seed}:${f.id}:${w.rng}`};
   w.results[resultId]=result;f.resultId=resultId;f.status='completed';f.phase='Settled';
-  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:row.time===null?null:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});recordForm(w,h,h.starts.at(-1));if(!f.historical)useRacingYears(w,h,4/360);h.lastRaceDay=w.day;if(!f.historical)changeFatigue(w,h,{load:25*(1-h.skills.recovery/500),source:'Race'});else h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
+  for(const row of rows){const h=w.horses[row.horseId];h.historyRecorded=true;h.starts.push({resultId,fixtureId:f.id,day:w.day,title:f.title,track:f.track,country:f.country,distance:f.distance,surface:f.surface,going:f.going,grade:f.grade,classId:f.classId,tier:f.tier||0,blackType:!!f.blackType,performanceRating:row.time===null?null:Math.round(clamp(50+(f.distance/row.time-15)*14+((row.carriedWeight||56)-56),0,140)),source:f.historical?'history seeded':'live',...row});recordForm(w,h,h.starts.at(-1));if(!f.historical)useRacingYears(w,h,4/360);h.lastRaceDay=w.day;if(!f.historical)campaignDay(w,h);if(!f.historical)changeFatigue(w,h,{load:25*(1-h.skills.recovery/500),source:'Race'});else h.fatigue=clamp(h.fatigue+25*(1-h.skills.recovery/500));h.fitness=clamp(h.fitness+.5);
     if(!f.historical){if(row.owner==='player')transact(w,BigInt(row.prize),'Race prize',resultId);else w.owners[row.owner].balance=(BigInt(w.owners[row.owner].balance||'0')+BigInt(row.prize)).toString();}
     const j=w.jockeys.find(x=>x.id===row.jockeyId);j.starts++;if(row.place===1)j.wins++;
     event(w,'racing',`${h.name}: ${row.place??'Pulled up'}/${rows.length} in ${f.title}, ${f.distance}m ${f.surface}.`,h.id);
@@ -186,7 +190,7 @@ export function planNpcEntries(w){
  for(const f of w.fixtures.filter(f=>f.status==='scheduled'&&f.day>=w.day&&f.day-w.day<=10).sort((a,b)=>((b.isAnnualMajor?100:0)+(b.conditions?.minRating!=null?70:0)+(b.tier||0)*10)-((a.isAnnualMajor?100:0)+(a.conditions?.minRating!=null?70:0)+(a.tier||0)*10)||a.day-b.day)){
    const target=Math.min(f.targetFieldSize||8,f.maxRunners-2);
    if(f.entries.length>=target&&f.day-w.day>1)continue;
-   if(f.day-w.day<=2&&f.entries.length<target){autoField(w,f,target);if(f.entries.length<target)addCircuitReserves(w,f,target-f.entries.length);}
+   if(f.day-w.day<=10&&f.entries.length<target){autoField(w,f,target);if(f.entries.length<target&&!f.reserveRecruitment)addCircuitReserves(w,f,target-f.entries.length);}
    // Keep at least two places open for player nominations before declarations.
    autoField(w,f,Math.min(f.targetFieldSize||8,f.maxRunners-2));
    delete f.fieldHealth;f.phase=f.day-w.day<=1?'DeclarationsClosed':'EntriesOpen';

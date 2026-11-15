@@ -1,3 +1,4 @@
+import {finishAwards} from './race-margins.js';
 import {age,RULES} from './rules.js';
 
 export function timelineIssue(w,h,start,fixtures=new Map(w.fixtures.map(f=>[f.id,f]))){
@@ -17,7 +18,7 @@ export function timelineIssue(w,h,start,fixtures=new Map(w.fixtures.map(f=>[f.id
  if(h.deceasedDay!=null&&r.day>h.deceasedDay)return 'Start after death';
  if(start.classId!==f.classId||r.classId!==f.classId||start.grade!==f.grade||r.grade!==f.grade||start.tier!==(f.tier||0))return 'Career class disagrees with race';
  if(start.place!==row.place||start.prize!==row.prize||start.time!==row.time||start.owner!==row.owner)return 'Career summary disagrees with result row';
- const prize=row.place===null?'0':(BigInt(f.purse)*BigInt(Math.round((RULES.purseShares[row.place-1]||0)*100))/100n).toString();
+ const prize=r.simulationVersion>=9?finishAwards(r.rows,f,RULES.purseShares)[r.rows.indexOf(row)].prize:row.place===null?'0':(BigInt(f.purse)*BigInt(Math.round((RULES.purseShares[row.place-1]||0)*100))/100n).toString();
  if(row.prize!==prize)return 'Prize disagrees with published purse';
  if(row.readiness&&(row.readiness.status!=='complete'||row.readiness.completedDay>r.day||row.readiness.clearance!=='Race-Cleared'||row.readiness.medicalCase))return 'Race readiness or medical restriction at start';
  return null;

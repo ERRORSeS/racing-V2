@@ -1,3 +1,4 @@
+import {marginText} from './race-margins.js';
 import { id } from './random.js';
 export function famousHorse(w,h,day=w.day){return !!h&&(h.starts.some(s=>s.day<=day&&s.place===1&&(s.tier>=7||s.classId==='g1'))||w.awards.some(a=>a.horseId===h.id&&a.day<=day&&/Legendary|Champion|Horse of the Year/.test(a.category)));}
 export function raceNewsReason(w,r){
@@ -18,7 +19,7 @@ export function importantStory(w,n){
 }
 export function publishRace(w,r){
  if(w.news.some(n=>n.resultId===r.id))return;const reason=raceNewsReason(w,r),winner=r.rows.find(row=>row.place===1);if(!reason||!winner)return;
- w.news.push({id:id(w,'news'),day:r.day,category:reason==='Major race'?'Major Racing':'Extraordinary',country:r.country,outlet:'First Light Racing Chronicle',headline:`${winner.name} wins ${r.title}`,summary:`${reason}: ${r.distance}m ${r.surface} at ${r.track}; ${winner.time.toFixed(2)} seconds. Prize ${(BigInt(winner.prize)/100n).toString()} USD.`,body:`Confirmed ${r.grade||'race'} result: ${r.rows.map(row=>`${row.place??'PU'}. ${row.name}${row.outcome==='Pulled up'?' (pulled up)':''}`).join('; ')}. ${reason==='Emerging talent'?'An outstanding early performance, not a guarantee of future ability. ':''}Reporting is based on the settled game result.`,horseIds:r.rows.map(row=>row.horseId),resultId:r.id,sourceEventIds:[r.id],significance:Math.max(7,r.tier||0),editorialVersion:2,noteworthy:true,read:false,bookmarked:false});
+ w.news.push({id:id(w,'news'),day:r.day,category:reason==='Major race'?'Major Racing':'Extraordinary',country:r.country,outlet:'First Light Racing Chronicle',headline:`${r.rows.filter(row=>row.place===1).map(row=>row.name).join(' and ')} ${winner.deadHeat?'dead heat in':'wins'} ${r.title}`,summary:`${reason}: ${r.distance}m ${r.surface} at ${r.track}; ${winner.time.toFixed(2)} seconds. Prize ${(BigInt(winner.prize)/100n).toString()} USD.`,body:`Confirmed ${r.grade||'race'} result: ${r.rows.map(row=>`${row.place??'PU'}. ${row.name}${row.outcome==='Pulled up'?' (pulled up)':row.place===1?(row.deadHeat?' (dead heat)':''):` (${row.marginLabel||marginText(row.margin)} behind winner)`}`).join('; ')}. ${reason==='Emerging talent'?'An outstanding early performance, not a guarantee of future ability. ':''}Reporting is based on the settled game result.`,horseIds:r.rows.map(row=>row.horseId),resultId:r.id,sourceEventIds:[r.id],significance:Math.max(7,r.tier||0),editorialVersion:2,noteworthy:true,read:false,bookmarked:false});
 }
 export function publishEvent(w,e){
  w.news??=[];let category=null,headline=e.text,related=[];

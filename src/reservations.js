@@ -25,4 +25,4 @@ export function scheduleIndex(w){
  for(const [id,previous]of index.fixtures)if(!seen.has(id))remove(index,id,previous);
  return index;
 }
-export function reserveInIndex(w,f,e,index=scheduleIndex(w)){reserve(index,f,e);index.fixtures.set(f.id,snapshot(f));}
+export function reserveInIndex(w,f,e,index=null){if(f.historical)return;index??=scheduleIndex(w);reserve(index,f,e);index.fixtures.set(f.id,snapshot(f));}

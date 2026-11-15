@@ -1,3 +1,5 @@
+import {closedAuctionHistory} from './auction-ui.js';
+import {NAMING_PRESETS} from './naming.js';
 import { bookPregnancyScan,setBroodmareCare,reviewReproductiveRecovery } from './reproduction.js';
 import { renewCalendar } from './race-catalog.js';
 import { editDurability, initializeDurability, completeRacingCareer } from './durability.js';
@@ -61,7 +63,7 @@ const autosaves=createSaveQueue(async snapshot=>{
  if(uiSaveBase?.revision===snapshot.storageRevision){const patch=worldPatch(snapshot,uiSaveBase.base);result=await workerRequest('save-patch',{patch,expectedRevision:snapshot.storageRevision});}
  if(!result||result.needsBase)result=await workerRequest('save',{world:snapshot});
  snapshot.storageRevision=result.revision;rememberSavedWorld(snapshot);if(world)world.storageRevision=result.revision;
-},{onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status.startsWith('Save failed:')){notice='Autosave failed. Your changes remain in memory; export, retry or reload.';render();}}});
+},{retryDelays:[2000,5000,15000],onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status==='Saved'&&notice.startsWith('Autosave failed.')){notice='Autosave recovered; changes saved.';const message=app.querySelector('.notice');if(message)message.textContent=notice;}if(status.startsWith('Save failed:')){notice='Autosave failed. Your changes remain in memory; export, retry or reload.';render();}}});
 async function update(action,message='Changes applied. Autosave pending.',horseIds=[]) {
  if(busy||actionPending){notice='Time is advancing. You can browse records; changes resume after the queued skips finish.';render();return;}actionPending=true;stopReplay();
  try{const next=actionSnapshot(world,{horseIds});await action(next);world=next;autosaves.schedule(world);notice=message;}
@@ -119,7 +121,7 @@ app.addEventListener('click',async e=>{
   if(a==='reload-career'){location.reload();return;}
   if(a==='new-career'&&advancing){notice='Wait for the queued skips before creating another career.';render();return;}
   if(a==='new-career'){await autosaves.flush();exportCareer();settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
-  if(a==='day'||a==='month'){await advance(a==='day'?1:30);return;}
+  if(['day','week','month'].includes(a)){await advance(a==='day'?1:a==='week'?7:30);return;}
   const actions={
     'pregnancy-scan':n=>bookPregnancyScan(n,id),
     'broodmare-care':n=>setBroodmareCare(n,id),
@@ -181,7 +183,7 @@ app.addEventListener('submit',async e=>{
       const maxYears=Number(f.get('maximumRacingCareerYears'));if(!Number.isInteger(maxYears)||maxYears<1||maxYears>5)throw Error('The maximum racing career is 1–5 elapsed years from debut.');n.settings.maximumRacingCareerYears=maxYears;for(const h of Object.values(n.horses)){initializeDurability(n,h);completeRacingCareer(n,h);refreshMaterialValue(n,h);}
       if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
       const juvenileRate=Number(f.get('eliteJuvenileCatalogChance'));if(!Number.isFinite(juvenileRate)||juvenileRate<0||juvenileRate>100)throw Error('Choose a juvenile consignment frequency from 0 to 100 percent.');n.settings.eliteJuvenileCatalogChance=juvenileRate/100;
-      const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
+      const naming=f.get('namingPreset');if(!NAMING_PRESETS.includes(naming))throw Error('Choose a naming preset.');n.settings.namingPreset=naming;const mode=f.get('registryMode'),injury=Number(f.get('injuryFrequency'));if(!['official','alternative'].includes(mode)||!Number.isFinite(injury)||injury<0||injury>10)throw Error('Invalid simulation settings.');
       if(f.get('fieldDensity')&&f.get('fieldDensity')!==n.settings.fieldDensity)setFieldDensity(n,f.get('fieldDensity'));n.settings.registryMode=mode;n.settings.injuryFrequency=injury;n.settings.theme=f.get('theme');for(const key of ['operatingCosts','instantTravel','avoidCloseBreeding','autoRace','fatalities','expandedGenetics','creativeMode','revealPotential','debug'])n.settings[key]=f.has(key);
     },
     care:n=>setCare(n,id,{feed:f.get('feed'),turnout:Number(f.get('turnout')),bit:f.get('bit'),accessory:f.get('accessory'),autoTravel:f.has('autoTravel'),autoCare:f.has('autoCare'),autoVet:f.has('autoVet'),autoFarrier:f.has('autoFarrier')}),
@@ -198,6 +200,7 @@ app.addEventListener('submit',async e=>{
 });
 app.addEventListener('toggle',e=>{
  if(!e.target.open||!world)return;
+ if(e.target.matches('[data-auction-archive]')){const slot=e.target.querySelector('[data-archive-lots]');if(slot&&!slot.childElementCount)slot.innerHTML=closedAuctionHistory(world,e.target.dataset.auctionArchive);}
  if(e.target.matches('[data-fixture]')){
   const fixture=world.fixtures.find(f=>f.id===e.target.dataset.fixture),slot=e.target.querySelector('[data-entry-controls]');
   if(fixture&&slot&&!slot.childElementCount)slot.innerHTML=raceEntryForm(world,fixture);

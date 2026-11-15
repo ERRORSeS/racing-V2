@@ -9,9 +9,10 @@ export function initializeDurability(w,h){
  if(!p){const structure=Object.values(h.conformation||{}).reduce((n,v)=>n+v,0)/Math.max(1,Object.keys(h.conformation||{}).length)*10;
   const inherited=(h.potential?.recovery??50)*.5+structure*.35+(seed(`${w.seed}:${h.id}:durability-v7`)/4294967296)*15;
   const latent=clamp(inherited),years=clamp(1+latent/25,1,5);
-  p=h.racingDurability={version:7,firstRaceDate:null,firstRacingAge:null,maximumCareerDurationDays:Math.min(MAX_RACING_DAYS,Math.max(360,Math.round((w.settings?.maximumRacingCareerYears??5)*360))),absoluteRaceEndDate:null,latentDurabilityScore:latent,latentRecoveryCapacity:h.potential?.recovery??50,baselineConformationRisk:clamp(100-structure),individualRacingLongevity:years,cumulativeRacingStrain:0,repetitiveStressIndex:0,chronicSusceptibility:0,limbRegionStatus:[],exposureHistory:[],recentWorkload7d:0,recentWorkload30d:0,lastDurabilityUpdatedDate:w.day,observedStarts:-1,racingRetirementReason:h.status==='retired'?'Previously retired':null,historyProvenance:'Individual predisposition from inherited recovery, conformation and deterministic variation; not a predicted injury date'};
+  p=h.racingDurability={version:7,firstRaceDate:null,firstRacingAge:null,maximumCareerDurationDays:Math.min(MAX_RACING_DAYS,Math.max(360,Math.round((w.settings?.maximumRacingCareerYears??5)*360))),absoluteRaceEndDate:null,latentDurabilityScore:latent,latentRecoveryCapacity:h.potential?.recovery??50,baselineConformationRisk:clamp(100-structure),individualRacingLongevity:years,cumulativeRacingStrain:0,preRacingStrain:0,repetitiveStressIndex:0,chronicSusceptibility:0,limbRegionStatus:[],exposureHistory:[],recentWorkload7d:0,recentWorkload30d:0,lastDurabilityUpdatedDate:w.day,observedStarts:-1,racingRetirementReason:h.status==='retired'?'Previously retired':null,historyProvenance:'Individual predisposition from inherited recovery, conformation and deterministic variation; not a predicted injury date'};
   h.durabilityEvents??=[];
  }
+ p.preRacingStrain??=0;
  const configured=Math.min(MAX_RACING_DAYS,Math.max(360,Math.round((w.settings?.maximumRacingCareerYears??5)*360)));
  if(p.maximumCareerDurationDays!==configured){p.maximumCareerDurationDays=configured;p.absoluteRaceEndDate=p.firstRaceDate==null?null:p.firstRaceDate+configured;}
  if(p.observedStarts!==h.starts.length){const first=h.starts.length?Math.min(...h.starts.map(s=>s.day)):null;p.firstRaceDate=first;p.firstRacingAge=first==null?null:age(h,first);p.absoluteRaceEndDate=first==null?null:first+p.maximumCareerDurationDays;p.observedStarts=h.starts.length;}
@@ -30,14 +31,14 @@ export function recordExposure(w,h,context,{load=0,activity=context}={}){
  const p=initializeDurability(w,h);if(!['training','race','travel'].includes(context)||load<=0)return;
  p.exposureHistory=p.exposureHistory.filter(e=>e.day>w.day-30);if(p.exposureHistory.some(e=>e.day===w.day&&e.context===context))return;
  const repeat=1+Math.max(0,p.repetitiveStressIndex-25)/100,base=context==='race'?load*.18:context==='travel'?load*.01:load*.025;
- p.cumulativeRacingStrain=clamp(p.cumulativeRacingStrain+base*repeat*(1.3-p.latentDurabilityScore/200),0,1000);
+ const strainKey=p.firstRaceDate!=null||context==='race'?'cumulativeRacingStrain':'preRacingStrain';p[strainKey]=clamp(p[strainKey]+base*repeat*(1.3-p.latentDurabilityScore/200),0,1000);
  p.repetitiveStressIndex=clamp(p.repetitiveStressIndex+load*.32);
  p.exposureHistory.push({day:w.day,context,activity,load});updateLoads(p,w.day);
  if(context==='race'||w.day%30===0)durabilityEvent(w,h,'Workload exposure',{context,load,cumulativeStrain:p.cumulativeRacingStrain});
 }
 function updateLoads(p,day){p.exposureHistory=p.exposureHistory.filter(e=>e.day>day-30);p.recentWorkload7d=p.exposureHistory.filter(e=>e.day>day-7).reduce((n,e)=>n+e.load,0);p.recentWorkload30d=p.exposureHistory.reduce((n,e)=>n+e.load,0);}
 export function recordClinicalHistory(w,h,m){const p=initializeDurability(w,h);if(p.limbRegionStatus.some(r=>r.caseId===m.id))return;
- const amount=severityLoad[m.severity]||2;p.chronicSusceptibility=clamp(p.chronicSusceptibility+amount);p.cumulativeRacingStrain=clamp(p.cumulativeRacingStrain+amount*2,0,1000);
+ const amount=severityLoad[m.severity]||2;p.chronicSusceptibility=clamp(p.chronicSusceptibility+amount);const strainKey=p.firstRaceDate!=null||m.context==='race'?'cumulativeRacingStrain':'preRacingStrain';p[strainKey]=clamp(p[strainKey]+amount*2,0,1000);
  p.limbRegionStatus.push({region:/hoof/i.test(m.diagnosis)?'Hoof':/muscle/i.test(m.diagnosis)?'Muscular system':'Unspecified limb / body region',caseId:m.id,diagnosis:m.diagnosis,severity:m.severity,status:m.status,day:m.day});durabilityEvent(w,h,'Clinical finding',{caseId:m.id,diagnosis:m.diagnosis,severity:m.severity});
 }
 export function durabilityDay(w,h){const p=initializeDurability(w,h);if(h.status==='deceased')return;
@@ -46,7 +47,7 @@ export function durabilityDay(w,h){const p=initializeDurability(w,h);if(h.status
  h.safeRacingYears=Math.min(h.safeRacingYears??reserve,reserve);completeRacingCareer(w,h);
 }
 export function projectedWindow(h,day){if(h.status!=='active'||(h.irreversibleSoundnessLimit??100)<RULES.minRaceSoundness)return {low:0,high:0,label:h.status==='active'?'Permanent veterinary racing restriction':'Racing retired / archived',expected:0};const p=h.racingDurability,window=careerWindow(h,day);if(!p)return {low:1,high:5,label:'Assessment needed'};
- const expected=clamp(Math.min(p.individualRacingLongevity,Math.max(0,h.safeRacingYears??p.individualRacingLongevity))-p.cumulativeRacingStrain/180-p.chronicSusceptibility/70-p.repetitiveStressIndex/80-Math.max(0,100-h.soundness)/100,0,5),remaining=Math.min(expected,window.remainingDays==null?5:window.remainingDays/360);
+ const expected=clamp(Math.min(p.individualRacingLongevity,Math.max(0,h.safeRacingYears??p.individualRacingLongevity))-(window.started?p.cumulativeRacingStrain/180+p.chronicSusceptibility/70+p.repetitiveStressIndex/80+Math.max(0,100-h.soundness)/100:0),0,5),remaining=Math.min(expected,window.remainingDays==null?5:window.remainingDays/360);
  return {low:Math.max(0,remaining-.75),high:Math.min(5,remaining+.75,window.remainingDays==null?5:window.remainingDays/360),label:remaining<1.5?'Limited':remaining<3?'Moderate':'Longer',expected};
 }
 export function restoreCareerReserve(w,h,gain){const p=initializeDurability(w,h),window=careerWindow(h,w.day);h.safeRacingYears=Math.min(Math.max(0,(h.safeRacingYears||0)+gain),p.individualRacingLongevity,window.remainingDays==null?5:window.remainingDays/360);}
@@ -54,4 +55,17 @@ export function restoreCareerReserve(w,h,gain){const p=initializeDurability(w,h)
 export function editDurability(w,h,{score,years}){
  if(!w.settings.creativeMode)throw Error('Exact durability editing requires Creative Mode.');if(!Number.isFinite(score)||score<0||score>100||!Number.isFinite(years)||years<1||years>5)throw Error('Durability must be 0–100 and projected longevity 1–5 years.');
  const p=initializeDurability(w,h);p.latentDurabilityScore=score;p.individualRacingLongevity=years;h.safeRacingYears=Math.min(years,careerWindow(h,w.day).remainingDays==null?5:careerWindow(h,w.day).remainingDays/360);durabilityEvent(w,h,'Creative durability edit',{score,years});
+}
+
+// Restore only never-raced reserves. Clinical restrictions, genetics, all exposure
+// records and every existing raced horse/result remain untouched.
+export function restorePreDebutSoundness(w){
+ if(w.preDebutSoundnessVersion===1)return false;
+ for(const h of Object.values(w.horses)){
+  const p=initializeDurability(w,h);if(h.starts.length||p.firstRaceDate!=null)continue;
+  const before=h.safeRacingYears,previousStrain=p.cumulativeRacingStrain;
+  h.safeRacingYears=p.individualRacingLongevity;p.preRacingStrain=clamp((p.preRacingStrain||0)+previousStrain,0,1000);p.cumulativeRacingStrain=0;
+  if(before!==h.safeRacingYears||previousStrain)durabilityEvent(w,h,'Pre-debut soundness corrected',{previousSafeYears:before,restoredSafeYears:h.safeRacingYears,preservedPreRacingStrain:p.preRacingStrain});
+ }
+ w.preDebutSoundnessVersion=1;return true;
 }

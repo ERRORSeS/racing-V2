@@ -1,3 +1,4 @@
+import {composedName} from './naming.js';
 export function random(w){let x=w.rng>>>0;x^=x<<13;x^=x>>>17;x^=x<<5;w.rng=x>>>0;return w.rng/4294967296;}
 export const pick=(w,a)=>a[Math.floor(random(w)*a.length)];
 export const integer=(w,a,b)=>a+Math.floor(random(w)*(b-a+1));
@@ -8,4 +9,4 @@ const last='Answer Question Compass Comet Meteor Orbit Planet Galaxy Cosmos Auro
 const nameIndexes=new WeakMap();
 export function invalidateNames(w){nameIndexes.delete(w);}
 export function registerName(w,h){const cached=nameIndexes.get(w);if(cached&&cached.horses===w.horses)cached.used.add(h.name.toLowerCase());}
-export function name(w){let cached=nameIndexes.get(w);if(!cached||cached.horses!==w.horses){cached={horses:w.horses,used:new Set(Object.values(w.horses).map(h=>h.name.toLowerCase()))};nameIndexes.set(w,cached);}const used=cached.used;for(let i=0;i<10000;i++){const a=pick(w,first),b=pick(w,last),n=pick(w,[`${a} ${b}`,`${b} of ${pick(w,last)}`,`${a} in ${pick(w,last)}`]);if(n.length<=18&&!used.has(n.toLowerCase()))return n;}throw Error('Name pool exhausted; choose a registered name.');}
+export function name(w){let cached=nameIndexes.get(w);if(!cached||cached.horses!==w.horses){cached={horses:w.horses,used:new Set(Object.values(w.horses).map(h=>h.name.toLowerCase()))};nameIndexes.set(w,cached);}const used=cached.used,preset=w.settings?.namingPreset||'Long OXO';if(!['Short / Classic','Official Registry Naming'].includes(preset)){for(let i=0;i<10000;i++){const n=composedName(w,preset);if(!used.has(n.toLowerCase()))return n;}throw Error('Name pool exhausted.');}for(let i=0;i<10000;i++){const a=pick(w,first),b=pick(w,last),n=pick(w,[`${a} ${b}`,`${b} of ${pick(w,last)}`,`${a} in ${pick(w,last)}`]);if(n.length<=18&&!used.has(n.toLowerCase()))return n;}throw Error('Name pool exhausted; choose a registered name.');}
