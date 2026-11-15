@@ -195,8 +195,14 @@ app.addEventListener('change',async e=>{
   if(e.target.matches('[data-choose]')){const counter=document.querySelector('#selected-count');if(counter)counter.textContent=`${document.querySelectorAll('[data-choose]:checked').length} horses selected`;return;}
   if(e.target.matches('[data-filter]')){state[e.target.name]=e.target.value;state.page=0;render();return;}
   if(e.target.matches('[data-pair]')){const form=e.target.closest('form'),f=new FormData(form);state.damId=f.get('damId');state.sireId=f.get('sireId');state.breedingMethod=f.get('method');state.breedingBatchId=f.get('batchId');state.coverNotice='';render();return;}
-  if(e.target.id==='import'&&e.target.files[0]){if(busy)return;const file=e.target.files[0];busy=true;render();try{await autosaves.flush();if(world)exportCareer();world=(await workerRequest('import',{file})).world;state.selected=null;state.resultId=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();notice='Career imported. Previous career was exported first.';}catch(error){notice=error.message;}finally{busy=false;}render();}
+  if(e.target.id==='import'&&e.target.files[0]){
+    if(busy||actionPending){notice='Wait for the current action to finish, then choose your backup again.';e.target.value='';render();(app.querySelector('.notice')||app.querySelector('main [role="status"]'))?.scrollIntoView({block:'center'});return;}
+    const file=e.target.files[0],hadCareer=!!world;busy=true;notice=`Importing ${file.name}…`;render();
+    try{await autosaves.flush();if(world)exportCareer();world=(await workerRequest('import',{file})).world;settingUp=false;Object.assign(state,{tab:'Dashboard',selected:null,resultId:null,profileStack:[],raceCountry:world.country,query:'',page:0,countryFilter:'All',sexFilter:'All',raceRecordFilter:'All',breeder:null,auctionEventId:null,auctionCategory:null});resetBreedingSelection();notice=`Career imported from ${file.name}.${hadCareer?' Previous career was exported first.':''}`;}
+    catch(error){notice=`Could not import ${file.name}: ${error.message}`;}
+    finally{busy=false;render();(app.querySelector('.notice')||app.querySelector('main [role="status"]'))?.scrollIntoView({block:'center'});}
+  }
 });
 app.innerHTML='<main><p role="status">Loading your saved career…</p></main>';
-try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career<input id="import" type="file" accept=".json,.jsonl,application/json,application/x-ndjson"></label><button data-action="restore">Restore previous autosave</button></main>`;}
+try{world=(await workerRequest('load',{})).world;if(!world)world=await loadCareer();if(world)state.raceCountry=world.country;}catch(error){notice=`${error.message} Your saved career has not been overwritten. Use Import or restore the previous autosave.`;app.innerHTML=`<main><p role="alert">${notice.replace(/[<>]/g,'')}</p><label>Import career (.json or .jsonl)<input id="import" type="file" aria-label="Choose career backup"></label><button data-action="restore">Restore previous autosave</button></main>`;}
 if(world||!notice)render();
