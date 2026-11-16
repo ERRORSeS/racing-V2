@@ -1,4 +1,4 @@
-import { initializeReproduction, recordCovering, recordFoaling, recordPregnancyLoss } from './reproduction.js';
+import { initializeReproduction, mareRecovery, recordCovering, recordFoaling, recordPregnancyLoss } from './reproduction.js';
 import { validateCareerTimeline } from './career-timeline.js';
 import { inheritGenome, geneticCeilings, coatFromGenome, legacyGenome, matingGeneticRisk, incompatibleGenotypes } from './genetics.js';
 import { distanceFromGenome } from './development.js';
@@ -25,7 +25,8 @@ export function breedingReason(w,dam,sire) {
   if(!dam.brood||dam.status!=='retired')return 'Retire the mare for breeding first.';
   if(dam.activeBreedingAttempt&&w.breedingAttempts?.some(a=>a.id===dam.activeBreedingAttempt&&a.outcome==='pending'))return 'Mare is covered; complete the pregnancy scan before rebooking.';
   if(dam.reproductiveReviewRequired)return 'Reproductive recovery requires veterinary clearance.';
-  if(dam.pregnancy||dam.postFoalingUntil>w.day)return 'An active gestation or reproductive/postpartum recovery prevents another covering.';
+  const recovery=mareRecovery(w,dam);
+  if(recovery.pregnant||recovery.until>w.day)return 'An active gestation or reproductive/postpartum recovery prevents another covering.';
   if(dam.medicalCase||sire.medicalCase||dam.soundness<65||sire.soundness<65)return 'Breeding soundness clearance required.';
   if(w.settings.avoidCloseBreeding&&kinship(w,dam.id,sire.id)>=.0625)return 'Pedigree overlap exceeds the selected 6.25% limit.';
   const risk=matingGeneticRisk(sire,dam);if(risk)return risk;
@@ -40,7 +41,6 @@ export function coveringReason(w,dam,sire,method='natural',batchId=null){
   if(w.settings.registryMode!=='alternative')return 'Frozen-semen AI cannot produce an official registered racing TB. Choose the fictional alternative registry to use a dose.';
   if(!batch||batch.sireId!==sire.id||batch.owner!==dam.owner||batch.doses<1||batch.viability<50)return 'A viable owned semen dose for the selected stallion is required.';
  }
- if(method==='natural'&&(dam.location!==sire.location||dam.arrivalDay>w.day||sire.arrivalDay>w.day))return 'Natural service requires both horses settled at the same country/base; book travel first.';
  const fee=sire.owner===dam.owner?'0':sire.studFee||'500000';
  if(dam.owner==='player'&&!w.unlimited&&BigInt(w.balance)<BigInt(fee))return 'Insufficient funds for the selected stud service.';
  return null;
@@ -58,7 +58,7 @@ export function cover(w,damId,sireId,method='natural',batchId=null,npc=false) {
   if(method==='frozen')batch.doses--;
   const fertility=clamp(.90-Math.max(0,age(dam,w.day)-12)*.025-Math.max(0,age(sire,w.day)-15)*.015+(traitModifiers(dam,{phase:'breeding'}).values.fertility||0),.45,.94);const season=1-Math.abs(Math.sin((w.day%360)/360*Math.PI*2))*.04;const conceived=random(w)<clamp(fertility*season*(method==='frozen'?.95:1),.4,.96);
   const c={id:id(w,'cover'),damId,sireId,owner:dam.owner,breeder:dam.owner,day:w.day,method,registryEligibility:method==='natural'?'official':'alternative',conceived,status:conceived?'pregnant':'awaiting result',dueDay:null,fee,bookId:book.id,originRules:structuredClone(w.settings)};
-  recordCovering(w,c);w.coverings.push(c);book.reservations.push(c.id);if(conceived)dam.pregnancy=c.id;else dam.postFoalingUntil=w.day+20;
+  recordCovering(w,c);w.coverings.push(c);book.reservations.push(c.id);dam.pregnancy=conceived?c.id:null;if(!conceived)dam.postFoalingUntil=w.day+20;
   return c;
 }
 export function foal(w,c) {
