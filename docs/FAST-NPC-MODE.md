@@ -46,8 +46,34 @@ intact when switching either direction.
   live simulation oracle, genetics, ownership, history, saves and V9 features.
 - Build, syntax and whitespace checks pass.
 
-Large player stables, many entered races, overdue events, slow device storage or
-full-save compaction can still take more than a second. The UI reports completion
+Large player stables, many entered races, overdue events, slow device storage can still take more than a second. The UI reports completion
 only after simulation and the save commit finish; no artificial instant-success
 screen replaces unfinished work. Background NPC campaign realism is intentionally
 paused in this optional mode in exchange for speed.
+
+
+## Repeated-skip save stall repair
+
+Previously, the 24-write or 1,024-part save limit forced a complete-world rewrite
+in fast mode too. A pending settings autosave could therefore hold a skip at
+“Advancing” before simulation even began.
+
+Fast checkpoints now retain immutable base parts and periodically squash only
+changes since that base. Full changed horse records replace prior versions during
+squashing; history suffixes are appended exactly once. The pinned base, accumulated
+changed IDs and history offsets survive reload. Both current and previous
+checkpoint remain protected by the existing revision check and atomic transaction.
+Normal live-mode compaction and full import validation remain in place. Settings
+saves report their actual stages while a skip waits for them.
+
+Regression coverage includes 60 cumulative saves against a 1,500-part base, plus
+browser skips on an aged world with over 10,000 horses at the old full-compaction
+boundary. The browser check crosses the new squash boundary, reloads partway
+through, checks the previous checkpoint and verifies original race results.
+Run `node scripts/check-large-fast-skips.cjs` against the built game on port 5173.
+
+Observed on the 10,570-horse / 1,011-result fixture: 25 day skips took
+240–514 ms, a week took 618 ms and a month took 698 ms while regressions also ran.
+Each measurement includes the persisted acknowledgement. Reloading halfway through
+and after the final save retained day 122, the day-92 backup and original results.
+Device storage, player stable size and actual entered races still affect latency.
