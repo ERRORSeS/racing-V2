@@ -5,7 +5,7 @@ export const RULES = Object.freeze({
   saveKey: 'thoroughbred-racing.world.v1', // Retain original key for automatic migration.
   minRaceSoundness: 80, maxRaceFatigue: 55, minRaceRest: 5,
   fieldSize: 8, raceFormVariation: .22, injuryRisk: 0.00012, farrierCycle: 45,
-  gestation: [320, 365], postFoalingRest: 45,
+  gestation: [320, 365], postFoalingRest: 180,
   purseShares: [0.60, 0.22, 0.12, 0.04, 0.02],
   vetFee: '15000', farrierFee: '12000', rehabFee: '50000', inspectionFee: '25000',
   transportFee: '100000', collectionFee: '25000',

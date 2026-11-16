@@ -18,6 +18,12 @@ export function initializeReproduction(w){
    const p=pregnancyFrom(w,c,a,Number.isSafeInteger(c.dueDay)?c.dueDay:null,null,true);p.status=foaled?'foaled':c.status==='lost'?'lost':'needs_recheck';p.legacyConfirmation=confirmed;p.liveFoalId=c.foalId||null;p.actualFoalingDayIndex=c.foalId?w.horses[c.foalId]?.born??null:null;p.recordedOutcome=foaled?'live_foal':c.status==='lost'?'loss':null;w.pregnancies.push(p);a.linkedPregnancyId=p.id;if(confirmed)w.pregnancyScans.push({id:`scan-${c.id}-legacy-review`,attemptId:c.id,mareId:c.damId,kind:'legacy pregnancy review',dueDay:w.day+1,status:'recommended'});
   }
  }
+ // Completed pregnancies remain permanent history, never an active booking.
+ for(const p of w.pregnancies)if(!active(p)){
+  const h=w.horses[p.mareId];if(!h)continue;
+  if(h.pregnancy===p.id||h.pregnancy===p.breedingAttemptId){h.pregnancy=null;markFastHorse(w,h.id);}
+  if(h.activeBreedingAttempt===p.breedingAttemptId){h.activeBreedingAttempt=null;markFastHorse(w,h.id);}
+ }
  w.reproductionVersion=8;
 }
 function contractFrom(w,c,a,legacy=false){return {id:a.contractId,attemptId:a.id,mareId:c.damId,sireId:c.sireId,serviceDayIndexes:a.serviceDayIndexes.slice(),mareOwnerAtCovering:c.owner??null,sireOwnerAtCovering:legacy?null:w.horses[c.sireId]?.owner,breederOfRecord:c.breeder??c.owner??null,fee:c.fee??null,method:a.method,registryEligibility:c.registryEligibility??'unknown',offspringRights:'Foal belongs to the mare owner at birth; breeder of record remains the covering breeder.',legacy,createdDay:c.day??null};}
@@ -32,11 +38,28 @@ export function recordCovering(w,c){
  reproductiveEvent(w,'CoveringPerformed',`covered-${c.id}`,c.damId,`${w.horses[c.damId].name}: covered by ${w.horses[c.sireId].name} on ${dateLabel(c.day)}; pregnancy not yet confirmed. First scan due ${dateLabel(c.day+15)}.`);return a;
 }
 export function currentAttempt(w,h){return w.breedingAttempts?.find(a=>a.id===h.activeBreedingAttempt)||w.breedingAttempts?.filter(a=>a.mareId===h.id).at(-1);}
+// Derive recovery from permanent birth records too, so older 45-day saves
+// gain the six-month rule without rewriting reproductive history.
+export function mareRecovery(w,h){
+ const pregnancies=(w.pregnancies||[]).filter(p=>p.mareId===h.id);
+ let lastFoalingDay=null;
+ for(const p of pregnancies)if(p.status==='foaled'){
+  const day=p.actualFoalingDayIndex??w.horses[p.liveFoalId]?.born;
+  if(Number.isSafeInteger(day))lastFoalingDay=Math.max(lastFoalingDay??day,day);
+ }
+ for(const c of w.coverings||[])if(c.damId===h.id&&c.status==='foaled'){
+  const day=w.horses[c.foalId]?.born;
+  if(Number.isSafeInteger(day))lastFoalingDay=Math.max(lastFoalingDay??day,day);
+ }
+ const linked=pregnancies.find(p=>p.id===h.pregnancy||p.breedingAttemptId===h.pregnancy)||w.coverings?.find(c=>c.id===h.pregnancy);
+ const pregnant=pregnancies.some(active)||!!(h.pregnancy&&(!linked||!['foaled','lost','not conceived'].includes(linked.status)));
+ return {pregnant,lastFoalingDay,until:Math.max(h.postFoalingUntil||0,lastFoalingDay==null?0:lastFoalingDay+RULES.postFoalingRest)};
+}
 export function pregnancySummary(w,h){
- if(!h||h.sex!=='filly')return null;const a=currentAttempt(w,h);if(!a)return {stage:h.postFoalingUntil>w.day?'Nursing / postpartum':'Open',mareId:h.id};
+ if(!h||h.sex!=='filly')return null;const recovery=mareRecovery(w,h),a=currentAttempt(w,h);if(!a)return {stage:recovery.until>w.day?'Nursing / postpartum':'Open',mareId:h.id,...(recovery.lastFoalingDay==null?{}:{breedableOn:recovery.until})};
  const p=w.pregnancies?.find(p=>p.breedingAttemptId===a.id),confirmed=!!(p?.confirmedOn!=null||p?.legacyConfirmation),closed=p&&!active(p),scan=w.pregnancyScans?.filter(s=>s.attemptId===a.id&&!['completed','canceled'].includes(s.status)).sort((a,b)=>a.dueDay-b.dueDay)[0];
- const stage=p?.status==='foaled'?(h.postFoalingUntil>w.day||w.horses[p.liveFoalId]?.youngstock?.weaning?.stage!=='complete'?'Nursing / postpartum':'Foaled'):p?.status==='lost'?'Pregnancy ended':a.outcome==='not_conceived'?'Not in foal':!confirmed?(w.day>=(scan?.dueDay??Infinity)?'Needs Scan':'Covered'):p.status==='needs_recheck'?'Needs Recheck':w.day-(p.estimatedConceptionDayIndex??w.day)>=300?'Near Foaling':'Pregnant';
- return {mareId:h.id,attemptId:a.id,sourceEventIds:(w.reproductiveEvents||[]).filter(e=>e.mareId===h.id).map(e=>e.id),followUp:scan?.dueDay??null,pregnancyId:p?.id??null,sireId:a.stallionId,coveredOn:a.firstServiceDayIndex,confirmedOn:p?.confirmedOn??null,legacyConfirmation:!!p?.legacyConfirmation,stage,confirmed:confirmed&&!closed,gestationDay:confirmed&&!closed&&p.estimatedConceptionDayIndex!=null?Math.max(0,w.day-p.estimatedConceptionDayIndex):null,gestationLength:confirmed&&!closed?p.currentEstimatedGestationDays:null,dueEstimate:confirmed&&!closed?p.estimatedDueDayIndex:null,dueWindow:confirmed&&!closed?[p.expectedWindowStartDayIndex,p.expectedWindowEndDayIndex]:null,remainingDays:confirmed&&!closed&&p.estimatedDueDayIndex!=null?p.estimatedDueDayIndex-w.day:null,scan:scan||null,foalId:p?.liveFoalId||null,actualFoalingDay:p?.actualFoalingDayIndex??null,endedDay:p?.endedDay??null,contractId:a.contractId,carePlan:p?.carePlan??null,foalingWatch:!!p?.foalingWatch,nextAction:closed?'Review outcome and mare recovery':a.outcome==='not_conceived'?'Reassess after recovery':scan?'Book pregnancy scan':'Continue broodmare monitoring'};
+ const stage=p?.status==='foaled'?(recovery.until>w.day?'Nursing / postpartum':'Open'):p?.status==='lost'?'Pregnancy ended':a.outcome==='not_conceived'?'Not in foal':!confirmed?(w.day>=(scan?.dueDay??Infinity)?'Needs Scan':'Covered'):p.status==='needs_recheck'?'Needs Recheck':w.day-(p.estimatedConceptionDayIndex??w.day)>=300?'Near Foaling':'Pregnant';
+ return {mareId:h.id,...(recovery.lastFoalingDay==null?{}:{breedableOn:recovery.until}),attemptId:a.id,sourceEventIds:(w.reproductiveEvents||[]).filter(e=>e.mareId===h.id).map(e=>e.id),followUp:scan?.dueDay??null,pregnancyId:p?.id??null,sireId:a.stallionId,coveredOn:a.firstServiceDayIndex,confirmedOn:p?.confirmedOn??null,legacyConfirmation:!!p?.legacyConfirmation,stage,confirmed:confirmed&&!closed,gestationDay:confirmed&&!closed&&p.estimatedConceptionDayIndex!=null?Math.max(0,w.day-p.estimatedConceptionDayIndex):null,gestationLength:confirmed&&!closed?p.currentEstimatedGestationDays:null,dueEstimate:confirmed&&!closed?p.estimatedDueDayIndex:null,dueWindow:confirmed&&!closed?[p.expectedWindowStartDayIndex,p.expectedWindowEndDayIndex]:null,remainingDays:confirmed&&!closed&&p.estimatedDueDayIndex!=null?p.estimatedDueDayIndex-w.day:null,scan:scan||null,foalId:p?.liveFoalId||null,actualFoalingDay:p?.actualFoalingDayIndex??null,endedDay:p?.endedDay??null,contractId:a.contractId,carePlan:p?.carePlan??null,foalingWatch:!!p?.foalingWatch,nextAction:closed?(recovery.until>w.day?`Postpartum recovery until ${dateLabel(recovery.until)}`:h.reproductiveReviewRequired?'Book reproductive clearance':'Choose a stallion for another covering'):a.outcome==='not_conceived'?'Reassess after recovery':scan?'Book pregnancy scan':'Continue broodmare monitoring'};
 }
 export function bookPregnancyScan(w,mareId){
  const h=ownedHorse(w,mareId),a=currentAttempt(w,h);if(!a||a.outcome==='not_conceived')throw Error('No active covering requires a pregnancy scan.');

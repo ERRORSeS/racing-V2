@@ -93,7 +93,7 @@ export function startingSession(w,h){
  return true;
 }
 export function educationSession(w,h,code=null){
- const y=h.youngstock,d=chronologicalDays(h,w.day);if(y.lastSessionDay===w.day||h.lastTrainingDay===w.day)return false;
+ const y=h.youngstock,d=chronologicalDays(h,w.day);if(d>=720)return false;if(y.lastSessionDay===w.day||h.lastTrainingDay===w.day)return false;
  if(!y.water||!y.shelter||h.medicalCase||h.clearance==='No Work'||h.fatigue>30||h.travelState==='InTransit')return false;
  const eligible=Object.entries(EDUCATION).filter(([,a])=>d>=a.minDays);
  if(!eligible.length)return false;

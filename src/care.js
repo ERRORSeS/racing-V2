@@ -92,14 +92,13 @@ export function train(w,h,manual=false,activity=null) {
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
  if(h.youngstock&&h.status==='active'&&!h.medicalCase&&!(h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage))){
   if(chronologicalDays(h,w.day)<720)return educationSession(w,h);
-  if(h.youngstock.starting.status==='not_started'){
-   if(!h.autoTrain)return educationSession(w,h);
+  if(!manual&&h.autoTrain&&h.youngstock.starting.status==='not_started'){
    if(startingBlocker(w,h))return false;
    createStartingPlan(w,h,h.youngstock.starting.pace);
   }
-  if(h.youngstock.starting.status!=='complete')return startingSession(w,h);
+  if(!manual&&h.autoTrain&&h.youngstock.starting.status!=='complete')return startingSession(w,h);
  }
- const young=age(h,w.day)<2,restricted=!!h.medicalCase||h.status==='retired'||h.therapy?.status==='active'||h.clearance==='Controlled Light Work'||h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage);
+ const young=chronologicalDays(h,w.day)<720,restricted=!!h.medicalCase||h.status==='retired'||h.therapy?.status==='active'||h.clearance==='Controlled Light Work'||h.breakPlan&&!['Complete','Fitness Rebuild'].includes(h.breakPlan.stage);
  if(h.clearance==='No Work'||restricted&&!manual&&!h.autoTrain)return false;
  let workout=activity||h.trainingPlan||'Auto Balanced';
  if(h.breakPlan?.stage==='Fitness Rebuild')workout='Reconditioning';
