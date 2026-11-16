@@ -42,7 +42,7 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
    if(!residentWorld)residentWorld=await loadCareer({compactRuntime:true,includeLegacy:false});
    if(!residentWorld){emit({requestId:data.requestId,needsBase:true});return;}
    if(data.expectedRevision!==(residentWorld.storageRevision||0))throw Error('Simulation snapshot differs from the last saved revision. Reload before saving.');
-   const next=packRuntime(applyWorldPatch(residentWorld,data.patch));const revision=await saveCareer(next,{preparedPatch:data.patch});residentWorld=next;emit({requestId:data.requestId,saved:true,revision});return;
+   const next=packRuntime(applyWorldPatch(residentWorld,data.patch));const revision=await saveCareer(next,{preparedPatch:data.patch,previousWorld:residentWorld,onProgress:saving=>emit({requestId:data.requestId,saving})});residentWorld=next;emit({requestId:data.requestId,saved:true,revision});return;
   }
   if(data.type==='save'){const revision=await saveCareer(data.world);residentWorld=data.world;emit({requestId:data.requestId,saved:true,revision});return;}
   if((data.type==='advance'||!data.type)&&!data.world&&!residentWorld){emit({requestId:data.requestId,recoveringCheckpoint:true});residentWorld=await loadCareer({compactRuntime:true,includeLegacy:false,onProgress:loading=>emit({requestId:data.requestId,loading})});reopened=!!residentWorld;}

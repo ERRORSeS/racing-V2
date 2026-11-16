@@ -47,7 +47,7 @@ function receiveBackground({data}){
  if(data.recoveringCheckpoint){request.recovery=true;armLoadTimeout(request);advanceStatus='Skip interrupted; recovering the last saved checkpoint…';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.replacingWorld){request.recovery=true;armLoadTimeout(request);world=null;uiSaveBase=null;state.loadedResult=null;state.historyEvents=null;state.historyHorseId=null;stopReplay();loadFailed=true;app.innerHTML=`<main><p id="loading-status" role="status">${data.replacingWorld}…</p><p>Your stored checkpoints remain intact.</p></main>`;return;}
  if(data.loading){if(request.type==='load'||request.recovery)armLoadTimeout(request);const label=app.querySelector('#loading-status');if(label)label.textContent=`${data.loading.stage}…${data.loading.total?` ${data.loading.done}/${data.loading.total}`:''}`;return;}
- if(data.saving){advanceStatus=`${data.saving.stage}…`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
+ if(data.saving){if(!advancing)return;advanceStatus=data.saving.stage.startsWith('Encoding')?'Saving progress…':`${data.saving.stage}…`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.simulating){advanceStatus=`Simulating ${data.simulating.done}/${data.simulating.total} days · saving pending`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  clearTimeout(request.timer);workerRequests.delete(data.requestId);
@@ -79,7 +79,7 @@ async function update(action,message='Changes applied. Autosave pending.',horseI
  catch(error){notice=error.message;}finally{actionPending=false;}render();
 }
 const advances=createAdvanceQueue(async days=>{
- stopReplay();notice=`Advancing ${days} days; you can continue browsing.`;advanceStatus=`Advancing 0/${days} days`;const progress=app.querySelector('#advance-status');if(progress)progress.textContent=advanceStatus;const message=app.querySelector('.notice');if(message)message.textContent=notice;
+ stopReplay();notice=`Advancing ${days} days; you can continue browsing.`;advanceStatus='Saving pending changes…';const progress=app.querySelector('#advance-status');if(progress)progress.textContent=advanceStatus;const message=app.querySelector('.notice');if(message)message.textContent=notice;
  try{await autosaves.flush();const result=await workerRequest('advance',{days,expectedRevision:world.storageRevision||0});world=result.patch?applyWorldPatch(world,result.patch):result.world;rememberSavedWorld(world);saveStatus='Saved';notice=`Advanced ${days} days and saved.`;}
  catch(error){if(error.committed){world=error.committed;rememberSavedWorld(world);}saveStatus='Skip stopped: '+error.message;notice=error.committed?`${error.message} Showing saved day ${world.day}. You can try advancing again from this date.`:`${error.message} The last durable checkpoint is retained. Try advancing again, or export your career if the error continues.`;throw error;}
  finally{render();}

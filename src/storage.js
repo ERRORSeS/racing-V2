@@ -1,3 +1,4 @@
+import {fastCheckpoint} from './fast-checkpoint.js';
 import {packRaceArchives} from './immutable-race-archive.js';
 import {repackHorseFields,packArchivedFields} from './archive-fields.js';
 import { snapshotParts,beginSnapshotParts,applySnapshotPart,finishSnapshotParts,portableSnapshotBlob,readPortableSnapshot,snapshotHash } from './snapshot-parts.js';
@@ -100,7 +101,7 @@ async function dbRead(key,{onProgress=()=>{},compactRuntime=false}={}){const db=
   else if(chunk.kind==='parts-data'&&parts)applySnapshotPart(parts,chunk,next);
   else{if(parts){finishSnapshotParts(parts);parts=null;}if(chunk.kind==='base')w=next;else if(w&&chunk.kind==='patch')w=applyWorldPatch(w,next);else throw Error('Invalid snapshot chunk order.');}
   if(compactRuntime&&w?.schema===7&&w.careerTimelineVersion===1&&w.preDebutSoundnessVersion===1&&w.v9Version===9&&w.reproductionVersion===8&&chunk.kind==='parts-data'){const ids=Object.keys(next);if(chunk.field==='horses'){packArchivedFields(w,ids);packRaceArchives(w,{horseIds:ids,resultIds:[]});}else if(chunk.field==='results')packRaceArchives(w,{horseIds:[],resultIds:ids});}
-  if(index===manifest.chunks.length-1){if(parts)finishSnapshotParts(parts);if(!w)throw Error('Snapshot base missing.');w.storageRevision=manifest.revision;value={format:'decoded-manifest-v3',world:w,chunkCount:manifest.chunks.length,deltaDepth:manifest.deltaDepth||0};}
+  if(index===manifest.chunks.length-1){if(parts)finishSnapshotParts(parts);if(!w)throw Error('Snapshot base missing.');w.storageRevision=manifest.revision;value={format:'decoded-manifest-v3',world:w,chunkCount:manifest.chunks.length,deltaDepth:manifest.deltaDepth||0,chunks:manifest.chunks,fastEpoch:manifest.fastEpoch};}
   if(index%8===0||index===manifest.chunks.length-1)onProgress({stage:'Reading saved records',done:index+1,total:manifest.chunks.length});
  }
  function readChunk(index,manifest){
@@ -124,10 +125,12 @@ export async function unpack(data){if(typeof data==='string')return data;return 
 let persistedBase=null;
 export function releaseCareerBaseline(){if(persistedBase)persistedBase.base=null;}
 const MAX_DELTA_WRITES=24,MAX_MANIFEST_CHUNKS=1024;
-export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null,onProgress=()=>{}}={}){
- const deltaBase=persistedBase?.base||initialBase;onProgress({stage:'Checking checkpoint'});const trustedFast=deltaBase?.fast&&w.settings.npcProgression===false&&persistedBase?.reference?.deref()===w&&persistedBase.revision===(w.storageRevision||0);let fastPatch=null;if(trustedFast){fastPatch=worldPatch(w,deltaBase);const ids=new Set(Object.keys(fastPatch.horses));for(const r of Object.values(fastPatch.results))for(const row of r.rows)if(!row.fastOpponent)ids.add(row.horseId);validate(w,{horseIds:[...ids],resultIds:Object.keys(fastPatch.results)});}else validate(w);onProgress({stage:'Preparing saved records'});
- const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS&&!!(preparedPatch||deltaBase);
- const records=[];let batch=[];const snapshot=delta?(preparedPatch||fastPatch||worldPatch(w,deltaBase)):w;onProgress({stage:'Encoding checkpoint'});
+export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null,previousWorld=null,onProgress=()=>{}}={}){
+ const deltaBase=persistedBase?.base||initialBase;onProgress({stage:'Checking checkpoint'});const trustedFast=!replace&&w.settings.npcProgression===false&&(preparedPatch||deltaBase?.fast)&&persistedBase?.reference?.deref()===(previousWorld||w)&&persistedBase.revision===(w.storageRevision||0);let fastPatch=null;if(trustedFast){fastPatch=preparedPatch||worldPatch(w,deltaBase);const ids=new Set(Object.keys(fastPatch.horses));for(const r of Object.values(fastPatch.results))for(const row of r.rows)if(!row.fastOpponent)ids.add(row.horseId);validate(w,{horseIds:[...ids],resultIds:Object.keys(fastPatch.results)});}else validate(w);onProgress({stage:'Preparing saved records'});
+ const fast=w.settings.npcProgression===false;
+ const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(fast||((persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS))&&!!(preparedPatch||deltaBase);
+ const checkpoint=delta&&fast?fastCheckpoint(w,preparedPatch||fastPatch||worldPatch(w,deltaBase),persistedBase.fastEpoch,persistedBase.chunks):null;
+ const records=[];let batch=[];const snapshot=checkpoint?.patch||(delta?(preparedPatch||fastPatch||worldPatch(w,deltaBase)):w);onProgress({stage:'Encoding checkpoint'});
  for(const part of snapshotParts(snapshot,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];if(records.length%16===0)onProgress({stage:`Encoding ${records.length} saved records`});}}await Promise.all(batch);
  onProgress({stage:'Committing checkpoint'});const db=await database();let nextRevision,writtenManifest;
  try{await new Promise((resolve,reject)=>{
@@ -137,7 +140,7 @@ export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase
    if(!replace&&(w.storageRevision||0)!==currentRevision){failure=Error('Another tab or newer career has saved changes. Export your unsaved work, then reload before continuing.');tx.abort();return;}
    if(delta&&(old?.format!=='first-light-manifest-v3'||!Array.isArray(old.chunks))){failure=Error('Snapshot format changed in another tab. Reload before saving.');tx.abort();return;}
    nextRevision=currentRevision+1;
-   const prefix='chunk-v3-'+(globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`),chunkKeys=records.map((_,i)=>`${prefix}-${i}`),manifest=writtenManifest={format:'first-light-manifest-v3',revision:nextRevision,deltaDepth:delta?(old.deltaDepth||0)+1:0,chunks:[...(delta?old.chunks:[]),...chunkKeys]};
+   const prefix='chunk-v3-'+(globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`),chunkKeys=records.map((_,i)=>`${prefix}-${i}`),manifest=writtenManifest={format:'first-light-manifest-v3',revision:nextRevision,deltaDepth:delta&&!checkpoint?.squash?(old.deltaDepth||0)+1:0,...(checkpoint?{fastEpoch:checkpoint.epoch}:{}),chunks:[...(delta?(checkpoint?.chunks||old.chunks):[]),...chunkKeys]};
    try{
     records.forEach((record,i)=>store.put(record,chunkKeys[i]));
     if(old)store.put(old,'backup');store.put(manifest,'current');
@@ -148,7 +151,7 @@ export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase
    }catch(error){failure=error;tx.abort();}
   };
   tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(failure||tx.error);
- });w.storageRevision=nextRevision;persistedBase={revision:nextRevision,manifest:true,chunkCount:writtenManifest.chunks.length,deltaDepth:writtenManifest.deltaDepth,base:patchBase(w,{fast:w.settings.npcProgression===false}),reference:new WeakRef(w)};return nextRevision;}finally{db.close();}
+ });w.storageRevision=nextRevision;persistedBase={revision:nextRevision,manifest:true,chunkCount:writtenManifest.chunks.length,chunks:writtenManifest.chunks,fastEpoch:writtenManifest.fastEpoch,deltaDepth:writtenManifest.deltaDepth,base:patchBase(w,{fast:w.settings.npcProgression===false}),reference:new WeakRef(w)};return nextRevision;}finally{db.close();}
 }
 async function readSnapshot(data,{onProgress=()=>{}}={}){
  let w,manifest=false;
@@ -157,7 +160,7 @@ async function readSnapshot(data,{onProgress=()=>{}}={}){
  else if(data?.format==='first-light-native-v1')w=data.world;
  else {w=decode(await unpack(data));w.storageRevision=0;}
  onProgress({stage:'Checking saved career'});
- const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,chunkCount:data.chunkCount||0,deltaDepth:data.deltaDepth||0,base:null,reference:new WeakRef(w)};return w;
+ const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,chunkCount:data.chunkCount||0,chunks:data.chunks,fastEpoch:data.fastEpoch,deltaDepth:data.deltaDepth||0,base:null,reference:new WeakRef(w)};return w;
 }
 export async function loadCareer({onProgress=()=>{},includeLegacy=true,compactRuntime=false}={}){onProgress({stage:'Opening saved career'});const data=await dbRead('current',{onProgress,compactRuntime});if(data)return readSnapshot(data,{onProgress});const legacy=!includeLegacy||typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer({onProgress=()=>{},compactRuntime=false}={}){onProgress({stage:'Reading previous autosave'});const data=await dbRead('backup',{onProgress,compactRuntime});if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}
