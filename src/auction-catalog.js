@@ -1,3 +1,6 @@
+import {childrenOf} from './family-index.js';
+import {repackHorseFields} from './archive-fields.js';
+import {fastMode} from './fast-mode.js';
 import { npcConsignmentAllowed } from './catalog-policy.js';
 import { appraisal } from './valuation.js';
 import { age } from './rules.js';
@@ -14,6 +17,7 @@ export function attachAuction(w,l){
  l.auctionEventId=event.id;l.categories=saleCategories(w,h);if(!event.listingIds.includes(l.id))event.listingIds.push(l.id);
 }
 export function rotateAuctions(w){
+ if(fastMode(w))return rotateFixedAuctions(w);
  w.auctionGenerationLog??=[];w.auctionEvents??=[];for(const l of w.listings)attachAuction(w,l);
  const horses=Object.values(w.horses),dependentDams=new Set(horses.filter(h=>h.youngstock?.weaning.stage!=='complete').map(h=>h.dam)),unavailable=new Set(w.listings.filter(l=>!l.closed&&!l.sold||l.sold&&w.day-l.saleDay<180).map(l=>l.horseId));
  const month=Math.floor(w.day/30);if(w.auctionGenerationLog.includes(month))return;w.auctionGenerationLog.push(month);
@@ -24,3 +28,5 @@ export function rotateAuctions(w){
   for(const h of candidates.slice(0,Math.max(0,6-open.length))){const price=appraisal(w,h);const l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind:'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],status:'open',consignmentReason:'Monthly NPC catalog rotation'};w.listings.push(l);attachAuction(w,l);}
  }
 }
+
+function rotateFixedAuctions(w){const month=Math.floor(w.day/30);w.auctionGenerationLog??=[];if(w.auctionGenerationLog.includes(month))return;w.auctionGenerationLog.push(month);const unavailable=new Set(w.listings.filter(l=>!l.closed&&!l.sold||l.sold&&w.day-l.saleDay<180).map(l=>l.horseId)),groups=new Map();for(const h of Object.values(w.horses)){if(['player','archive'].includes(h.owner)||h.status==='deceased'||h.pregnancy||h.medicalCase||unavailable.has(h.id))continue;const list=groups.get(h.location)||[];list.push(h);groups.set(h.location,list);}for(const list of groups.values()){list.sort((a,b)=>seed(`${w.seed}:${month}:${a.id}:fixed-sale`)-seed(`${w.seed}:${month}:${b.id}:fixed-sale`));let added=0;for(const h of list){if(added===6)break;if(!npcConsignmentAllowed(w,h)||h.youngstock?.weaning.stage!=='complete'||h.sex==='filly'&&childrenOf(w,h.id).some(c=>c.dam===h.id&&c.youngstock?.weaning.stage!=='complete'&&c.owner===h.owner)){repackHorseFields(h);continue;}const price=appraisal(w,h),l={id:id(w,'listing'),horseId:h.id,seller:h.owner,price,reserve:price,kind:'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[],status:'open',consignmentReason:'Rotating existing stock · NPC progression paused'};w.listings.push(l);attachAuction(w,l);repackHorseFields(h);added++;}}}

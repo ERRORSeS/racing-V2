@@ -1,3 +1,4 @@
+import {setNpcProgression} from './fast-mode.js';
 import {hydrateDisplayArchive} from './ui-snapshot.js';
 import {closedAuctionHistory} from './auction-ui.js';
 import {NAMING_PRESETS} from './naming.js';
@@ -110,6 +111,7 @@ app.addEventListener('click',async e=>{
     try{await autosaves.flush();world=(await workerRequest('restore-backup',{})).world;rememberSavedWorld(world);state.selected=null;state.resultId=null;state.loadedResult=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
     catch(error){notice=error.message;}finally{actionPending=false;render();}return;
   }
+  if(a==='npc-mode'){await update(n=>setNpcProgression(n,n.settings.npcProgression===false),world.settings.npcProgression===false?'Live NPC simulation enabled.':'Fast skips enabled. NPC growth and background progression are paused.',[]);return;}
   if(a==='reload-career'){location.reload();return;}
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
@@ -197,6 +199,7 @@ app.addEventListener('submit',async e=>{
     rename:n=>rename(n,id,f.get('name')),
     country:n=>{changeCountry(n,f.get('country'));state.raceCountry=f.get('country');},
     settings:n=>{
+      setNpcProgression(n,f.has('npcProgression'));
       const maxYears=Number(f.get('maximumRacingCareerYears'));if(!Number.isInteger(maxYears)||maxYears<1||maxYears>5)throw Error('The maximum racing career is 1–5 elapsed years from debut.');n.settings.maximumRacingCareerYears=maxYears;for(const h of Object.values(n.horses)){initializeDurability(n,h);completeRacingCareer(n,h);refreshMaterialValue(n,h);}
       if(f.get('balance'))setBalance(n,f.get('balance'));if(!f.has('unlimited')&&BigInt(n.balance)<0n)throw Error('Enter a non-negative custom balance before disabling unlimited funds.');n.unlimited=f.has('unlimited');
       const juvenileRate=Number(f.get('eliteJuvenileCatalogChance'));if(!Number.isFinite(juvenileRate)||juvenileRate<0||juvenileRate>100)throw Error('Choose a juvenile consignment frequency from 0 to 100 percent.');n.settings.eliteJuvenileCatalogChance=juvenileRate/100;
@@ -212,7 +215,7 @@ app.addEventListener('submit',async e=>{
     cover:n=>cover(n,f.get('damId'),f.get('sireId'),f.get('method'),f.get('batchId')),
     collect:n=>collect(n,f.get('sireId')),batch:n=>transferBatch(n,id,f.get('owner'),f.get('country')),
   };
-  if(actions[kind])await update(actions[kind],kind==='cover'?'Covering recorded. Pregnancy is not yet confirmed; the first scan is due in about 15 days.':undefined,['settings','travel'].includes(kind)?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
+  if(actions[kind])await update(actions[kind],kind==='cover'?'Covering recorded. Pregnancy is not yet confirmed; the first scan is due in about 15 days.':undefined,kind==='settings'?[]:kind==='travel'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
   if(kind==='cover'){state.coverNotice=notice;render();app.querySelector('[data-cover-feedback]')?.scrollIntoView({block:'center'});}
 });
 app.addEventListener('toggle',e=>{

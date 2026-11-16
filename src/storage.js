@@ -7,18 +7,21 @@ import { validateCareerTimeline, repairCareerTimelines } from './career-timeline
 import { LOCI, incompatibleGenotypes } from './genetics.js';
 import { upgrade } from './upgrade.js';
 import {RULES,COUNTRIES,SKILLS} from './rules.js';
-export function validate(w){
+export function validate(w,{horseIds=null,resultIds=null}={}){
+ const horseEntries=horseIds?horseIds.map(id=>[id,w.horses[id]]):Object.entries(w?.horses||{}),resultEntries=resultIds?resultIds.map(id=>[id,w.results[id]]):Object.entries(w?.results||{}),results=resultEntries.map(([,r])=>r);
  if(w?._uiView)throw Error('This is a display snapshot. The complete saved archive must be loaded before saving or exporting.');
  if(w?.storageRevision!=null&&(!Number.isSafeInteger(w.storageRevision)||w.storageRevision<0))throw Error('Invalid save revision.');
  if(!w||w.schema!==RULES.schema)throw Error('Unsupported save version. Original data has not been changed.');
  if(!Number.isSafeInteger(w.day)||w.day<0||!Number.isInteger(w.rng)||w.rng<=0||!Number.isSafeInteger(w.sequence)||!COUNTRIES[w.country]||!/^[-]?\d+$/.test(w.balance)||!w.horses||!w.owners?.player)throw Error('Corrupt world header.');
  for(const key of ['events','ledger','listings','fixtures','sessions'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
- for(const [key,h] of Object.entries(w.horses)){const potential=h.potential;if(h._uiArchiveFields)throw Error('Display-only ancestor data cannot replace a complete saved horse.');if(h.id!==key||h.breed!=='Thoroughbred'||!w.owners[h.owner]||!COUNTRIES[h.country]||!Number.isSafeInteger(h.born)||!Array.isArray(h.starts)||!Array.isArray(h.formerNames)||!h.coat||!h.conformation)throw Error('Corrupt horse record.');for(const p of [h.sire,h.dam])if(p&&(!w.horses[p]||w.horses[p].born>=h.born))throw Error('Invalid ancestry.');for(const k of SKILLS)if(!Number.isFinite(h.skills[k])||!Number.isFinite(potential[k])||h.skills[k]<0||h.skills[k]>potential[k]||potential[k]>100)throw Error('Invalid ability.');for(const k of ['soundness','fitness','fatigue','temperament','spookiness'])if(!Number.isFinite(h[k])||h[k]<0||h[k]>100)throw Error(`Invalid ${k}.`);repackHorseFields(h);}
+ for(const [key,h] of horseEntries){const potential=h.potential;if(h._uiArchiveFields)throw Error('Display-only ancestor data cannot replace a complete saved horse.');if(h.id!==key||h.breed!=='Thoroughbred'||!w.owners[h.owner]||!COUNTRIES[h.country]||!Number.isSafeInteger(h.born)||!Array.isArray(h.starts)||!Array.isArray(h.formerNames)||!h.coat||!h.conformation)throw Error('Corrupt horse record.');for(const p of [h.sire,h.dam])if(p&&(!w.horses[p]||w.horses[p].born>=h.born))throw Error('Invalid ancestry.');for(const k of SKILLS)if(!Number.isFinite(h.skills[k])||!Number.isFinite(potential[k])||h.skills[k]<0||h.skills[k]>potential[k]||potential[k]>100)throw Error('Invalid ability.');for(const k of ['soundness','fitness','fatigue','temperament','spookiness'])if(!Number.isFinite(h[k])||h[k]<0||h[k]>100)throw Error(`Invalid ${k}.`);repackHorseFields(h);}
+ if(horseIds)for(const h of Object.values(w.horses)){if(!w.owners[h.owner]||[h.sire,h.dam].some(id=>id&&(!w.horses[id]||w.horses[id].born>=h.born)))throw Error('Invalid unchanged horse reference.');}
  for(const l of w.listings)if(!w.horses[l.horseId]||!/^\d+$/.test(l.price))throw Error('Invalid listing.');
  if(new Set(w.events.map(e=>e.id)).size!==w.events.length)throw Error('Duplicate event identity.');
  for(const e of w.events)if(e.horseId&&!w.horses[e.horseId])throw Error('Missing event horse.');
  if(w.settings?.eliteJuvenileCatalogChance!=null&&(!Number.isFinite(w.settings.eliteJuvenileCatalogChance)||w.settings.eliteJuvenileCatalogChance<0||w.settings.eliteJuvenileCatalogChance>1))throw Error('Invalid juvenile consignment frequency.');
  if(w.settings?.maximumRacingCareerYears!=null&&(!Number.isInteger(w.settings.maximumRacingCareerYears)||w.settings.maximumRacingCareerYears<1||w.settings.maximumRacingCareerYears>5))throw Error('Racing career cap must be 1–5 years.');
+ if(w.settings?.npcProgression!=null&&typeof w.settings.npcProgression!=='boolean')throw Error('Invalid NPC progression setting.');
  if(!w.settings||!['official','alternative'].includes(w.settings.registryMode)||!Number.isFinite(w.settings.injuryFrequency)||w.settings.injuryFrequency<0||w.settings.injuryFrequency>10)throw Error('Invalid world settings.');
  if(!Number.isInteger(w.journalClearedThrough)||w.journalClearedThrough<0||w.journalClearedThrough>w.events.length)throw Error('Invalid journal cursor.');
  for(const key of ['medical','visits','coverings','freezer','jockeys','staff','news','travel','awards','trackRecords','studBooks'])if(!Array.isArray(w[key]))throw Error(`Missing ${key}.`);
@@ -26,7 +29,7 @@ export function validate(w){
  const jockeys=new Set(w.jockeys.map(j=>j.id)),fixtureById=new Map(w.fixtures.map(f=>[f.id,f])),listingIds=new Set(w.listings.map(l=>l.id));
  if(new Set(w.fixtures.map(f=>f.id)).size!==w.fixtures.length)throw Error('Duplicate fixture identity.');
  if(!Array.isArray(w.calendarGenerationLog)||new Set(w.calendarGenerationLog.map(l=>l.key)).size!==w.calendarGenerationLog.length)throw Error('Invalid calendar generation log.');
- for(const h of Object.values(w.horses)){const genome=h.genome;
+ for(const [,h] of horseEntries){const genome=h.genome;
   if(!['filly','colt','gelding'].includes(h.sex)||!['active','retired','deceased'].includes(h.status)||!COUNTRIES[h.location]||!Array.isArray(h.traits)||!Array.isArray(h.ownership)||!h.gear||!Number.isFinite(h.condition)||h.condition<1||h.condition>9||!Number.isFinite(h.hoofHealth)||h.hoofHealth<0||h.hoofHealth>100)throw Error('Invalid horse care or identity.');
   if(h.autoRace!=null&&typeof h.autoRace!=='boolean'||h.autoRaceInterval!=null&&(!Number.isInteger(h.autoRaceInterval)||h.autoRaceInterval<5||h.autoRaceInterval>90)||h.autoRaceMaxTier!=null&&!['Auto','2','3','4','5','6','7'].includes(String(h.autoRaceMaxTier)))throw Error('Invalid per-horse race policy.');
   if(h.trainingIntensity!=null&&!['Rest','Light','Balanced','Intense'].includes(h.trainingIntensity)||h.protectRecovery!=null&&typeof h.protectRecovery!=='boolean')throw Error('Invalid training policy.');
@@ -57,8 +60,8 @@ export function validate(w){
   repackHorseFields(h);
  }
  for(const f of w.fixtures){if(!Number.isInteger(f.day)||!COUNTRIES[f.country]||!Array.isArray(f.entries)||!['scheduled','running','completed','closed','canceled'].includes(f.status))throw Error('Invalid fixture.');for(const e of f.entries)if(!w.horses[e.horseId]||!jockeys.has(e.jockeyId)||!w.owners[e.owner])throw Error('Invalid race entry.');if(f.resultId&&!w.results[f.resultId])throw Error('Missing committed result.');}
- for(const [key,r] of Object.entries(w.results)){if(r._uiDeferred||r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
- for(const r of Object.values(w.results))for(const row of r.rows){const h=w.horses[row.horseId];if(!h.starts.some(s=>s.resultId===r.id)&&!h.careerQuarantine?.some(q=>q.original.resultId===r.id))throw Error('Completed result missing its official career start.');}
+ for(const [key,r] of resultEntries){if(r._uiDeferred||r.id!==key||fixtureById.get(r.fixtureId)?.resultId!==r.id||!Array.isArray(r.rows)||!Array.isArray(r.frames))throw Error('Invalid race result.');if(r.fastOpponents&&!fixtureById.get(r.fixtureId).fastOpponents||r.rows.some(row=>row.fastOpponent&&(!r.fastOpponents||row.owner==='player'||row.readiness?.origin!=='fixed_opponent_profile')))throw Error('Invalid fixed opponent result.');for(const row of r.rows)if(!w.horses[row.horseId]||(row.outcome==='Pulled up'?row.time!==null||row.place!==null||row.prize!=='0':!Number.isFinite(row.time)||row.time<=0)||!/^\d+$/.test(row.prize))throw Error('Invalid finisher.');}
+ for(const r of results)for(const row of r.rows){if(r.fastOpponents&&row.fastOpponent&&row.owner!=='player')continue;const h=w.horses[row.horseId];if(!h.starts.some(s=>s.resultId===r.id)&&!h.careerQuarantine?.some(q=>q.original.resultId===r.id))throw Error('Completed result missing its official career start.');}
  for(const t of w.travel)if(!w.horses[t.horseId]||!COUNTRIES[t.origin]||!COUNTRIES[t.destination]||t.readyDay<t.arrivalDay||t.arrivalDay<t.departureDay)throw Error('Invalid transport booking.');
  for(const n of w.news)if(n.resultId&&!w.results[n.resultId]||n.horseIds.some(id=>!w.horses[id]))throw Error('News refers to a missing source.');
  for(const a of w.awards)if(!w.horses[a.horseId]||a.evidence.some(id=>!w.results[id]))throw Error('Award has missing evidence.');
@@ -122,9 +125,9 @@ let persistedBase=null;
 export function releaseCareerBaseline(){if(persistedBase)persistedBase.base=null;}
 const MAX_DELTA_WRITES=24,MAX_MANIFEST_CHUNKS=1024;
 export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null,onProgress=()=>{}}={}){
- onProgress({stage:'Checking checkpoint'});validate(w);onProgress({stage:'Preparing saved records'});
- const deltaBase=persistedBase?.base||initialBase,delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS&&!!(preparedPatch||deltaBase);
- const records=[];let batch=[];const snapshot=delta?(preparedPatch||worldPatch(w,deltaBase)):w;onProgress({stage:'Encoding checkpoint'});
+ const deltaBase=persistedBase?.base||initialBase;onProgress({stage:'Checking checkpoint'});const trustedFast=deltaBase?.fast&&w.settings.npcProgression===false&&persistedBase?.reference?.deref()===w&&persistedBase.revision===(w.storageRevision||0);let fastPatch=null;if(trustedFast){fastPatch=worldPatch(w,deltaBase);const ids=new Set(Object.keys(fastPatch.horses));for(const r of Object.values(fastPatch.results))for(const row of r.rows)if(!row.fastOpponent)ids.add(row.horseId);validate(w,{horseIds:[...ids],resultIds:Object.keys(fastPatch.results)});}else validate(w);onProgress({stage:'Preparing saved records'});
+ const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS&&!!(preparedPatch||deltaBase);
+ const records=[];let batch=[];const snapshot=delta?(preparedPatch||fastPatch||worldPatch(w,deltaBase)):w;onProgress({stage:'Encoding checkpoint'});
  for(const part of snapshotParts(snapshot,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];if(records.length%16===0)onProgress({stage:`Encoding ${records.length} saved records`});}}await Promise.all(batch);
  onProgress({stage:'Committing checkpoint'});const db=await database();let nextRevision,writtenManifest;
  try{await new Promise((resolve,reject)=>{
@@ -145,7 +148,7 @@ export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase
    }catch(error){failure=error;tx.abort();}
   };
   tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(failure||tx.error);
- });w.storageRevision=nextRevision;persistedBase={revision:nextRevision,manifest:true,chunkCount:writtenManifest.chunks.length,deltaDepth:writtenManifest.deltaDepth,base:patchBase(w)};return nextRevision;}finally{db.close();}
+ });w.storageRevision=nextRevision;persistedBase={revision:nextRevision,manifest:true,chunkCount:writtenManifest.chunks.length,deltaDepth:writtenManifest.deltaDepth,base:patchBase(w,{fast:w.settings.npcProgression===false}),reference:new WeakRef(w)};return nextRevision;}finally{db.close();}
 }
 async function readSnapshot(data,{onProgress=()=>{}}={}){
  let w,manifest=false;
@@ -154,7 +157,7 @@ async function readSnapshot(data,{onProgress=()=>{}}={}){
  else if(data?.format==='first-light-native-v1')w=data.world;
  else {w=decode(await unpack(data));w.storageRevision=0;}
  onProgress({stage:'Checking saved career'});
- const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,chunkCount:data.chunkCount||0,deltaDepth:data.deltaDepth||0,base:null};return w;
+ const needsMigration=w.preDebutSoundnessVersion!==1||w.v9Version!==9||w.schema!==7||w.v7Migration?.version!==7||w.reproductionVersion!==8;upgrade(w);repairCareerTimelines(w);initializeV7World(w);validate(w);if(needsMigration)Object.defineProperty(w,'migrationNeedsSave',{value:true,enumerable:false,configurable:true});persistedBase={revision:w.storageRevision||0,manifest:manifest&&!needsMigration,chunkCount:data.chunkCount||0,deltaDepth:data.deltaDepth||0,base:null,reference:new WeakRef(w)};return w;
 }
 export async function loadCareer({onProgress=()=>{},includeLegacy=true,compactRuntime=false}={}){onProgress({stage:'Opening saved career'});const data=await dbRead('current',{onProgress,compactRuntime});if(data)return readSnapshot(data,{onProgress});const legacy=!includeLegacy||typeof localStorage==='undefined'?null:load();if(legacy){legacy.storageRevision=0;await saveCareer(legacy);}return legacy;}
 export async function backupCareer({onProgress=()=>{},compactRuntime=false}={}){onProgress({stage:'Reading previous autosave'});const data=await dbRead('backup',{onProgress,compactRuntime});if(data)return readSnapshot(data);const legacy=localStorage.getItem(`${RULES.saveKey}.backup`);if(!legacy)throw Error('No previous autosave available.');return decode(legacy);}

@@ -1,3 +1,4 @@
+import {fastMode,markFastHorse} from './fast-mode.js';
 import { pregnancySummary } from './reproduction.js';
 import { recordSaleEvidence } from './valuation.js';
 import { validateCareerTimeline } from './career-timeline.js';
@@ -19,12 +20,12 @@ export const bidIncrement=()=>100000n;
 export function nextBid(l){return BigInt(l.bids.at(-1)?.amount||'0')+bidIncrement();}
 export function outstandingBids(w,exceptId=null){return w.listings.filter(l=>l.id!==exceptId&&l.kind==='auction'&&!l.closed&&!l.sold&&l.bids.at(-1)?.owner==='player').reduce((sum,l)=>sum+BigInt(l.bids.at(-1).amount),0n);}
 export function transfer(w,l,buyer,price) {
-  if(l.sold||l.closed)throw Error('Listing is already sold or closed.');const h=w.horses[l.horseId],seller=h.owner;
+  if(l.sold||l.closed)throw Error('Listing is already sold or closed.');const h=w.horses[l.horseId],seller=h.owner;markFastHorse(w,h.id);
   const blocker=saleBlocker(w,h);if(blocker)throw Error(blocker);if(!w.owners[buyer]||buyer==='archive'||!/^\d+$/.test(String(price))||BigInt(price)<=0n)throw Error('Invalid buyer or sale price.');
   if(seller!==l.seller)throw Error('Seller no longer owns this horse.');if(buyer===seller)throw Error('Cannot buy your own listing.');
   if(buyer==='player')transact(w,-BigInt(price),'Bloodstock purchase',l.id);else {const o=w.owners[buyer];if(!o||BigInt(o.balance)<BigInt(price))throw Error('Buyer budget is insufficient.');o.balance=(BigInt(o.balance)-BigInt(price)).toString();}
   if(seller==='player')transact(w,BigInt(price),'Bloodstock sale',l.id);else w.owners[seller].balance=(BigInt(w.owners[seller].balance||'0')+BigInt(price)).toString();
-  l.maternityDisclosureAtSale=structuredClone(pregnancySummary(w,h));l.maternityRights='Pregnancy follows the mare; foal owner is mare owner at birth, breeder of record stays as contracted.';scratchEntries(w,h,'ownership transfer');h.owner=buyer;l.sold=true;l.buyer=buyer;l.salePrice=String(price);l.saleDay=w.day;l.status='sold';l.closed=true;h.ownership.push({owner:buyer,day:w.day,price:String(price),seller});
+  l.maternityDisclosureAtSale=structuredClone(pregnancySummary(w,h));l.maternityRights='Pregnancy follows the mare; foal owner is mare owner at birth, breeder of record stays as contracted.';scratchEntries(w,h,'ownership transfer');h.owner=buyer;markFastHorse(w,h.id);l.sold=true;l.buyer=buyer;l.salePrice=String(price);l.saleDay=w.day;l.status='sold';l.closed=true;h.ownership.push({owner:buyer,day:w.day,price:String(price),seller});
   recordSaleEvidence(w,h,l);event(w,'ownership',`${h.name} sold by ${w.owners[seller].name} to ${w.owners[buyer].name} for ${(BigInt(price)/100n).toString()} USD.`,h.id);
 }
 export function buy(w,listingId) {
@@ -42,7 +43,7 @@ export function bid(w,listingId,value) {
 }
 export function withdrawListing(w,listingId){const l=w.listings.find(x=>x.id===listingId);if(!l||l.seller!=='player'||l.sold||l.closed)throw Error('No active owned listing.');if(l.bids.length)throw Error('An auction with bids cannot be withdrawn.');l.closed=true;l.status='withdrawn';}
 export function marketDay(w) {
-  for(const l of w.listings){if(l.sold||l.closed||l.lastMarketDay===w.day)continue;l.lastMarketDay=w.day;const h=w.horses[l.horseId],blocker=saleBlocker(w,h);if(blocker||h.owner!==l.seller){l.closed=true;l.status='withdrawn';l.closeReason=blocker||'Seller no longer owns the horse.';event(w,'market',`Listing ${l.id} withdrawn: ${l.closeReason}`,h.id);continue;}const value=BigInt(appraisal(w,h));
+  for(const l of w.listings){if(fastMode(w)&&l.seller!=='player'&&!l.bids?.some(b=>b.owner==='player')){if(!l.sold&&!l.closed&&l.kind==='auction'&&w.day>=l.endDay){l.closed=true;l.status='passed_in';}continue;}if(l.sold||l.closed||l.lastMarketDay===w.day)continue;l.lastMarketDay=w.day;const h=w.horses[l.horseId],blocker=saleBlocker(w,h);if(blocker||h.owner!==l.seller){l.closed=true;l.status='withdrawn';l.closeReason=blocker||'Seller no longer owns the horse.';event(w,'market',`Listing ${l.id} withdrawn: ${l.closeReason}`,h.id);continue;}const value=BigInt(appraisal(w,h));
     if(l.kind==='auction'){
       if(w.day<l.endDay&&l.lastNpcBidDay!==w.day&&random(w)<.3){l.lastNpcBidDay=w.day;const candidates=Object.entries(w.owners).filter(([key,o])=>!['player','archive',l.seller,l.bids.at(-1)?.owner].includes(key)&&BigInt(o.balance||'0')>BigInt(l.bids.at(-1)?.amount||'0'));const pair=candidates[integer(w,0,Math.max(0,candidates.length-1))];if(pair){const minimum=BigInt(l.bids.at(-1)?.amount||'0')+BigInt(integer(w,100000,1000000)),reserve=BigInt(l.reserve),offer=minimum<reserve&&reserve<=value*12n/10n?reserve:minimum;if(offer<value*14n/10n&&offer<BigInt(pair[1].balance))l.bids.push({owner:pair[0],amount:offer.toString(),day:w.day});}}
       if(w.day>=l.endDay){const top=l.bids.at(-1);

@@ -1,3 +1,4 @@
+import {fastMode,beginFastSkip} from './fast-mode.js';
 import {packRaceArchives,fullRecordedResult} from './immutable-race-archive.js';
 import {packArchivedFields} from './archive-fields.js';
 import {compactWorld,compactPatch} from './ui-snapshot.js';
@@ -50,14 +51,14 @@ export async function runBackgroundJob(data,send,{cooperative=false}={}){
   if(data.type==='import'&&!world.pedigreeHistoryVersion&&world.settings.historyYears>0)seedPedigreeCareers(world);
   if(world)packRuntime(world);
   if(data.type==='advance'||!data.type){
-   if(world)base=patchBase(world);
+   if(world){if(fastMode(world))beginFastSkip(world);base=patchBase(world,{fast:fastMode(world)});}
    if(!world)throw Error('Reload the saved career before advancing.');
    if(data.expectedRevision!=null&&data.expectedRevision!==(world.storageRevision||0)){const error=Error(reopened?'The latest saved checkpoint has been restored. Check the date, then click advance again.':'Simulation snapshot differs from the last saved revision. Reload before advancing.');if(reopened)error.committed=world;throw error;}
    if(!Number.isSafeInteger(data.days)||data.days<1||data.days>36000)throw Error('Advance 1–36,000 days at a time.');
-   if(!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;}
+   if(!fastMode(world)&&!world.studInventoryV6){recruitAccomplishedSires(world);updateStudFees(world);world.studInventoryV6=true;}
    for(let done=0;done<data.days;){
-    const chunk=Math.min(cooperative?1:30,data.days-done),startDay=world.day;for(const day of advanceSteps(world,chunk)){packRuntime(world);emit({requestId:data.requestId,simulating:{done:done+day-startDay,total:data.days,day}});await yieldTask();}
-    if(world.settings.historyYears>0)seedPedigreeCareers(world);
+    const chunk=Math.min(cooperative?1:30,data.days-done),startDay=world.day;for(const day of advanceSteps(world,chunk)){if(!fastMode(world))packRuntime(world);emit({requestId:data.requestId,simulating:{done:done+day-startDay,total:data.days,day}});if(!fastMode(world))await yieldTask();}
+    if(!fastMode(world)&&world.settings.historyYears>0)seedPedigreeCareers(world);
     await saveCareer(world,{initialBase:base,onProgress:saving=>emit({requestId:data.requestId,saving})});done+=chunk;checkpointWritten=true;
     emit({requestId:data.requestId,progress:{done,total:data.days,day:world.day}});
     if(cooperative)await yieldTask();
@@ -71,4 +72,4 @@ function yieldTask(){if(globalThis.scheduler?.yield)return scheduler.yield();ret
 
 function fullTransfer(snapshot){return {...snapshot,horses:Object.fromEntries(Object.entries(snapshot.horses).map(([id,h])=>{const next=typeof h.toJSON==='function'?h.toJSON():{...h};if(next.starts)next.starts=next.starts.map(fullRecordedResult);return [id,next];})),results:Object.fromEntries(Object.entries(snapshot.results).map(([id,r])=>[id,fullRecordedResult(r)]))};}
 
-function packRuntime(w){return packRaceArchives(packArchivedFields(w,null,Object.keys(w.horses).length>=9000));}
+function packRuntime(w){if(fastMode(w))return w;return packRaceArchives(packArchivedFields(w,null,Object.keys(w.horses).length>=9000));}
