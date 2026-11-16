@@ -1,3 +1,4 @@
+import {fastMode,fastDirty} from './fast-mode.js';
 import {decodeField} from './archive-codec.js';
 import {ARCHIVE_FIELDS,fieldIdentity,inheritArchiveFields,hasPackedFields,repackHorseFields} from './archive-fields.js';
 import {tailView,trimDisplayHistories,hydrateDisplayArchive,DISPLAY_FIELDS} from './ui-snapshot.js';
@@ -12,21 +13,22 @@ const staticKeys=h=>h._uiArchiveFields?DISPLAY_FIELDS:h.owner==='archive'||hasPa
 const BULKY_FIELDS=['youngstock','traitInstances','coat'];
 const HORSE_HISTORY=['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory','npcTrainingArchive'];
 function bulkyStamps(h){const stamps=Object.fromEntries(BULKY_FIELDS.filter(key=>h[key]!==undefined).map(key=>[key,archiveStamp(h[key])]));repackHorseFields(h);return stamps;}
-export function patchBase(w,{identity=false}={}){return {
- horseStatic:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(staticKeys(h).map(key=>[key,staticValue(h,key)]))])),
- horseFields:identity?null:new Map(Object.entries(w.horses).filter(([,h])=>h.owner!=='archive'&&!hasPackedFields(h)).map(([id,h])=>[id,bulkyStamps(h)])),
+export function patchBase(w,{identity=false,fast=false}={}){const entries=Object.entries(w.horses).filter(([,h])=>!fast||h.owner==='player');return {
+ fast,rootLengths:fast?Object.fromEntries(Object.entries(w).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])):null,fixtureStates:fast?new Map(w.fixtures.map(f=>[f.id,`${f.status}:${f.day}:${f.entries.length}`])):null,playerIds:fast?new Set(entries.map(([id])=>id)):null,fastChanged:fast?fastDirty(w):null,
+ horseStatic:new Map(entries.map(([id,h])=>[id,Object.fromEntries(staticKeys(h).map(key=>[key,staticValue(h,key)]))])),
+ horseFields:identity||fast?null:new Map(Object.entries(w.horses).filter(([,h])=>h.owner!=='archive'&&!hasPackedFields(h)).map(([id,h])=>[id,bulkyStamps(h)])),
  horseRefs:identity?new Map(Object.entries(w.horses)):null,
  lengths:Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].length])),
- horseLengths:new Map(Object.entries(w.horses).map(([id,h])=>[id,Object.fromEntries(HORSE_HISTORY.map(key=>[key,h[key]?.length||0]))])),
+ horseLengths:new Map(entries.map(([id,h])=>[id,Object.fromEntries(HORSE_HISTORY.map(key=>[key,h[key]?.length||0]))])),
  results:new Set(Object.keys(w.results)),
  completed:new Set(w.fixtures.filter(f=>f.status==='completed').map(f=>f.id)),
- archives:identity?null:new Map(Object.values(w.horses).filter(h=>h.owner==='archive').map(h=>[h.id,archiveStamp(h)]))
+ archives:identity||fast?null:new Map(Object.values(w.horses).filter(h=>h.owner==='archive').map(h=>[h.id,archiveStamp(h)]))
 };}
-export function worldPatch(w,base){const {_uiView,...source}=w;return {
+export function worldPatch(w,base){const {_uiView,...source}=w;if(base.fast)for(const [key,length]of Object.entries(base.rootLengths)){if(!['events','ledger','sessions','fixtures','medical','listings','pregnancies','pregnancyScans','coverings','breedingAttempts','studContracts','auctionEvents','travel','freezer','staff','jockeys','calendarGenerationLog'].includes(key)&&w[key].length===length)delete source[key];}return {
  ...source,...Object.fromEntries(Object.entries(base.lengths).map(([key,length])=>[key,w[key].slice(length)])),
  results:Object.fromEntries(Object.entries(w.results).filter(([id])=>!base.results.has(id))),
- fixtures:w.fixtures.filter(f=>!base.completed.has(f.id)),
- horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
+ fixtures:w.fixtures.filter(f=>base.fast?base.fixtureStates.get(f.id)!==`${f.status}:${f.day}:${f.entries.length}`:!base.completed.has(f.id)),
+ horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.fast?(h.owner==='player'||base.playerIds.has(id)||base.fastChanged.has(id)):base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
   const lengths=base.horseLengths.get(id),{_uiArchiveFields,...fields}=h;if(!lengths)return [id,_uiArchiveFields?{...fields,...Object.fromEntries(Object.entries(_uiArchiveFields).map(([key,value])=>[key,decodeField(value)]))}:h];const next={...fields,_historyAppend:true};
   for(const key of staticKeys(h))if(base.horseStatic?.get(id)?.[key]===staticValue(h,key)){delete next[key];next._partialHorse=true;}else next[key]=_uiArchiveFields?.[key]?decodeField(_uiArchiveFields[key]):h[key];
   for(const key of BULKY_FIELDS)if(base.horseFields?.get(id)?.[key]!==undefined&&base.horseFields.get(id)[key]===archiveStamp(h[key])){delete next[key];next._partialHorse=true;}
@@ -39,5 +41,5 @@ export function applyWorldPatch(w,patch){
   if(!h._historyAppend){horses[id]=h;continue;}
   const {_historyAppend,_partialHorse,...changed}=h,next=_partialHorse?{...w.horses[id],...changed}:changed;for(const key of HORSE_HISTORY)if(Array.isArray(h[key]))next[key]=(w.horses[id]?.[key]||[]).concat(h[key]);if(patch._uiView){if(h._uiArchiveFields){next._uiArchiveFields={...(w.horses[id]?._uiArchiveFields||{}),...h._uiArchiveFields};for(const key of Object.keys(h._uiArchiveFields))delete next[key];}if(next.npcTrainingArchive)next.npcTrainingArchive=tailView(next.npcTrainingArchive,30);if(next.durabilityEvents)next.durabilityEvents=tailView(next.durabilityEvents,40);}horses[id]=inheritArchiveFields(w.horses[id],next);
  }
- const merged={...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].concat(patch[key])])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};return patch._uiView?hydrateDisplayArchive(trimDisplayHistories(merged)):merged;
+ const merged={...w,...patch,...Object.fromEntries(ROOT_HISTORY.map(key=>[key,w[key].concat(patch[key])])),results:{...w.results,...patch.results},fixtures:[...fixtures.values()],horses};return patch._uiView?hydrateDisplayArchive(trimDisplayHistories(merged)):merged;
 }

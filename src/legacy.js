@@ -16,8 +16,8 @@ export function updateRecords(w,r){
  if(r.founderArchive)return;
  let index=recordIndexes.get(w);if(!index||index.records!==w.trackRecords||index.length!==w.trackRecords.length){index={records:w.trackRecords,length:w.trackRecords.length,latest:new Map(w.trackRecords.map(t=>[t.key,t]))};recordIndexes.set(w,index);}
  const key=`${r.track}:${r.distance}:${r.surface}:${r.going}`;
- for(const row of r.rows){if(row.time==null)continue;const previous=index.latest.get(key);if(!previous||row.time<previous.time){const record={id:id(w,'record'),key,horseId:row.horseId,resultId:r.id,day:r.day,time:row.time,previousId:previous?.id||null};w.trackRecords.push(record);index.latest.set(key,record);index.length=w.trackRecords.length;}}
- const winner=r.rows.find(row=>row.place===1);if(!winner)return;
+ for(const row of r.rows){if(row.fastOpponent||row.time==null)continue;const previous=index.latest.get(key);if(!previous||row.time<previous.time){const record={id:id(w,'record'),key,horseId:row.horseId,resultId:r.id,day:r.day,time:row.time,previousId:previous?.id||null};w.trackRecords.push(record);index.latest.set(key,record);index.length=w.trackRecords.length;}}
+ const winner=r.rows.find(row=>row.place===1);if(!winner||winner.fastOpponent)return;
  if(['listed','g3','g2','g1'].includes(r.classId)||/^(Grade|Group) [123]$/.test(r.grade||''))evaluateLegacy(w,w.horses[winner.horseId]);
  if(r.classId==='g1'||/^(Grade|Group) 1$/.test(r.grade||''))for(const parent of [w.horses[winner.horseId].sire,w.horses[winner.horseId].dam])if(parent)evaluateLegacy(w,w.horses[parent]);
 }

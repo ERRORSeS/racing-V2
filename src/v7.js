@@ -12,7 +12,7 @@ export function initializeV7World(w,{fresh=false}={}){
  return w;
 }
 export function settleV7Race(w,result){
- for(const row of result.rows){const h=w.horses[row.horseId];const p=recordFirstStart(w,h);if(result.historical){p.cumulativeRacingStrain=Math.max(p.cumulativeRacingStrain,Math.min(1000,h.starts.length*4));continue;}
+ for(const row of result.rows){if(row.fastOpponent)continue;const h=w.horses[row.horseId];const p=recordFirstStart(w,h);if(result.historical){p.cumulativeRacingStrain=Math.max(p.cumulativeRacingStrain,Math.min(1000,h.starts.length*4));continue;}
   const start=h.starts.find(s=>s.resultId===result.id);const change=start&&recordVerifiedStart(w,h,start);
   if(result.classId==='g1'&&row.place===1)for(const parentId of [h.sire,h.dam]){const parent=w.horses[parentId];if(parent)recordMaterialValue(w,parent,'Verified offspring G1 result',`progeny:${result.id}:${h.id}`);}
   if(change&&result.classId==='g1'&&Math.abs(Number(change.change)/Number(change.previousValue))>=.15)event(w,'valuation',`${h.name}: verified ${result.title} performance changes market appraisal to ${(BigInt(change.value)/100n).toString()} USD; this is an estimate, not a sale price.`,h.id);
