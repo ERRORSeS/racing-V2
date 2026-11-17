@@ -87,6 +87,10 @@ export function exposure(w,h,context,details={}) {
   if(random(w)<risk){const type=chooseInjury(w,context,random);return injure(w,h,type.severity,type.label,context,type.id);}
   return null;
 }
+export function setTrainingProgram(w,horseId,program){
+ const h=ownedHorse(w,horseId);if(!Object.hasOwn(WORKOUTS,program))throw Error('Choose a valid training program.');
+ h.trainingPlan=program;return h;
+}
 export function train(w,h,manual=false,activity=null) {
  if(h.pregnancy&&activity&&!['Light exercise','Rest'].includes(activity))throw Error('Pregnancy restricts serious racing work; choose light exercise or rest under veterinary clearance.');
  if(h.status==='deceased'||h.lastTrainingDay===w.day||h.lastRaceDay===w.day||h.travelState==='InTransit')return false;
