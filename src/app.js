@@ -10,7 +10,7 @@ import { applyWorldPatch,patchBase,worldPatch } from './world-patch.js';
 import { createAdvanceQueue } from './advance-queue.js';
 import { actionSnapshot } from './action-snapshot.js';
 import { createSaveQueue } from './save-queue.js';
-import { startHorse, startingSession, startingSessionReason, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
+import { startHorse, autoStartHorse, startingSession, startingSessionReason, educationSession, beginWeaning, setYoungstockCare } from './youngstock.js';
 import { mountGuide } from './guide.js';
 import { editGenetics, dnaPanel } from './editing.js';
 import { LOCI } from './genetics.js';
@@ -42,16 +42,16 @@ function failBackground(error){for(const r of workerRequests.values()){clearTime
 function armLoadTimeout(request){clearTimeout(request.timer);request.timer=setTimeout(()=>failBackground(Error(request.recovery?'Recovery stopped responding. Stored checkpoints remain available. Retry loading.':'Loading stopped responding. Your saved career has not been changed. Retry loading or restore the previous autosave.')),45000);}
 let fallbackChain=Promise.resolve();
 function receiveBackground({data}){
- if(data.world?._uiView)hydrateDisplayArchive(data.world);if(data.committed?._uiView)hydrateDisplayArchive(data.committed);
+ if(data.session?._uiView)hydrateDisplayArchive(data.session);if(data.world?._uiView)hydrateDisplayArchive(data.world);if(data.committed?._uiView)hydrateDisplayArchive(data.committed);
  const request=workerRequests.get(data.requestId);if(!request)return;
  if(data.recoveringCheckpoint){request.recovery=true;armLoadTimeout(request);advanceStatus='Skip interrupted; recovering the last saved checkpoint…';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.replacingWorld){request.recovery=true;armLoadTimeout(request);world=null;uiSaveBase=null;state.loadedResult=null;state.historyEvents=null;state.historyHorseId=null;stopReplay();loadFailed=true;app.innerHTML=`<main><p id="loading-status" role="status">${data.replacingWorld}…</p><p>Your stored checkpoints remain intact.</p></main>`;return;}
  if(data.loading){if(request.type==='load'||request.recovery)armLoadTimeout(request);const label=app.querySelector('#loading-status');if(label)label.textContent=`${data.loading.stage}…${data.loading.total?` ${data.loading.done}/${data.loading.total}`:''}`;return;}
  if(data.saving){if(!advancing)return;advanceStatus=data.saving.stage.startsWith('Encoding')?'Saving progress…':`${data.saving.stage}…`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  if(data.simulating){advanceStatus=`Simulating ${data.simulating.done}/${data.simulating.total} days · saving pending`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
- if(data.progress){advanceStatus=`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
+ if(data.progress){advanceStatus=data.progress.saved===false?`Advanced ${data.progress.done}/${data.progress.total} days · unsaved`:`Advancing ${data.progress.done}/${data.progress.total} days · checkpoint day ${data.progress.day}`;const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;return;}
  clearTimeout(request.timer);workerRequests.delete(data.requestId);
- if(data.error){const error=Error(data.error);error.committed=data.committed;request.reject(error);}else request.resolve(data);
+ if(data.error){const error=Error(data.error);error.committed=data.committed;error.session=data.session;request.reject(error);}else request.resolve(data);
 }
 function workerRequest(type,payload){
  if(!backgroundWorker&&typeof Worker!=='undefined'){
@@ -66,26 +66,25 @@ function workerRequest(type,payload){
  });
 }
 let actionPending=false,saveStatus='Saved',uiSaveBase=null;
-function rememberSavedWorld(snapshot){uiSaveBase={revision:snapshot.storageRevision||0,base:patchBase(snapshot,{identity:true})};}
+function rememberSavedWorld(snapshot){uiSaveBase={revision:snapshot.storageRevision||0,day:snapshot.day,base:patchBase(snapshot,{identity:true,fast:snapshot.settings.npcProgression===false})};}
 const autosaves=createSaveQueue(async snapshot=>{
- snapshot.storageRevision=world?.storageRevision||snapshot.storageRevision||0;let result;
- if(uiSaveBase?.revision===snapshot.storageRevision){const patch=worldPatch(snapshot,uiSaveBase.base);result=await workerRequest('save-patch',{patch,expectedRevision:snapshot.storageRevision});}
- if(!result||result.needsBase)result=await workerRequest('save',{world:snapshot});
+ snapshot.storageRevision=world?.storageRevision||snapshot.storageRevision||0;
+ const patch=worldPatch(snapshot,uiSaveBase.base),result=await workerRequest('manual-save',{manualSave:true,patch,expectedRevision:snapshot.storageRevision,expectedDay:uiSaveBase.day});
  snapshot.storageRevision=result.revision;rememberSavedWorld(snapshot);if(world)world.storageRevision=result.revision;
-},{retryDelays:[2000,5000,15000],onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status==='Saved'&&notice.startsWith('Autosave failed.')){notice='Autosave recovered; changes saved.';const message=app.querySelector('.notice');if(message)message.textContent=notice;}if(status.startsWith('Save failed:')){notice='Autosave failed. Your changes remain in memory; export, retry or reload.';render();}}});
-async function update(action,message='Changes applied. Autosave pending.',horseIds=[]) {
+},{delay:null,onStatus:status=>{saveStatus=status;const label=app.querySelector('#save-status');if(label)label.textContent=status;if(status==='Saved'&&notice.startsWith('Save failed.')){notice='Career saved.';const message=app.querySelector('.notice');if(message)message.textContent=notice;}if(status.startsWith('Save failed:')){notice='Save failed. Your changes remain in memory; export, retry or reload.';render();}}});
+async function update(action,message='Changes applied. Unsaved — click Save career.',horseIds=[]) {
  if(busy||actionPending){notice='Time is advancing. You can browse records; changes resume after the queued skips finish.';render();return;}actionPending=true;stopReplay();
  try{const next=actionSnapshot(world,{horseIds});await action(next);world=hydrateDisplayArchive(next);autosaves.schedule(world);notice=message;}
  catch(error){notice=error.message;}finally{actionPending=false;}render();
 }
 const advances=createAdvanceQueue(async days=>{
- stopReplay();notice=`Advancing ${days} days; you can continue browsing.`;advanceStatus='Saving pending changes…';const progress=app.querySelector('#advance-status');if(progress)progress.textContent=advanceStatus;const message=app.querySelector('.notice');if(message)message.textContent=notice;
- try{await autosaves.flush();const result=await workerRequest('advance',{days,expectedRevision:world.storageRevision||0});world=result.patch?applyWorldPatch(world,result.patch):result.world;rememberSavedWorld(world);saveStatus='Saved';notice=`Advanced ${days} days and saved.`;}
- catch(error){if(error.committed){world=error.committed;rememberSavedWorld(world);}saveStatus='Skip stopped: '+error.message;notice=error.committed?`${error.message} Showing saved day ${world.day}. You can try advancing again from this date.`:`${error.message} The last durable checkpoint is retained. Try advancing again, or export your career if the error continues.`;throw error;}
+ stopReplay();notice=`Advancing ${days} days; you can continue browsing.`;advanceStatus='Advancing…';const progress=app.querySelector('#advance-status');if(progress)progress.textContent=advanceStatus;const message=app.querySelector('.notice');if(message)message.textContent=notice;
+ try{await autosaves.wait();const result=await workerRequest('advance',{days,manualSave:true,patch:worldPatch(world,uiSaveBase.base),expectedRevision:world.storageRevision||0,expectedDay:uiSaveBase.day});world=result.patch?applyWorldPatch(world,result.patch):result.world;rememberSavedWorld(world);autosaves.schedule(world);notice=`Advanced ${days} days. Unsaved — click Save career.`;}
+ catch(error){if(error.session){world=error.session;rememberSavedWorld(world);autosaves.schedule(world);}if(error.committed){world=error.committed;rememberSavedWorld(world);}saveStatus='Skip stopped: '+error.message;notice=error.committed?`${error.message} Showing saved day ${world.day}. You can try advancing again from this date.`:`${error.message} The last durable checkpoint is retained. Try advancing again, or export your career if the error continues.`;throw error;}
  finally{render();}
 },{onChange:count=>{advancing=count>0;busy=advancing;advanceStatus=count?`Time skips queued: ${count}`:'';const label=app.querySelector('#advance-status');if(label)label.textContent=advanceStatus;if(!count)render();}});
 async function advance(days){if(!Number.isSafeInteger(days)||days<1||days>36000){notice='Advance 1–36,000 days at a time.';render();return;}try{await advances.enqueue(days);}catch{/* Error and checkpoint already displayed. */}}
-window.addEventListener('pagehide',()=>{if(autosaves.dirty)autosaves.flush().catch(()=>{});});
+window.addEventListener('beforeunload',e=>{if(autosaves.dirty){e.preventDefault();e.returnValue='';}});
 function collectSetup(){const f=new FormData(app.querySelector('[data-form="setup"]'));draft={starterEducation:f.get('starterEducation')||'Not started',stable:f.get('stable'),owner:f.get('owner'),country:f.get('country'),seed:f.get('seed'),balance:f.get('balance'),unlimited:f.has('unlimited'),expandedGenetics:f.has('expandedGenetics'),creativeMode:f.has('creativeMode'),revealPotential:f.has('revealPotential'),fieldDensity:f.get('fieldDensity')||'Balanced'};starters=starters.map((s,i)=>({catalogId:s.catalogId,identity:s.identity,selected:f.has(`chosen-${i}`),name:f.get(`name-${i}`),sex:f.get(`sex-${i}`),surface:f.get(`surface-${i}`),distance:Number(f.get(`distance-${i}`)),potential:Number(f.get(`potential-${i}`)),ability:Number(f.get(`ability-${i}`)),temperament:Number(f.get(`temperament-${i}`)),spookiness:Number(f.get(`spookiness-${i}`)),base:f.get(`base-${i}`),shade:f.get(`shade-${i}`),face:f.get(`face-${i}`),gray:f.has(`gray-${i}`),tobiano:f.has(`tobiano-${i}`)}));}
 async function exportCareer(){
  try{
@@ -137,7 +136,7 @@ app.addEventListener('click',async e=>{
   if(a==='breeder-stock'){state.breeder=id;state.query='';state.countryFilter='All';state.sexFilter='All';state.raceRecordFilter='All';state.page=0;render();document.querySelector('main')?.scrollIntoView({block:'start'});return;}
   if(a==='breeder-directory'){state.breeder=null;render();return;}
   if(a==='export'){exportCareer();return;}
-  if(a==='retry-save'){try{await autosaves.flush();}catch(error){notice=error.message;}render();return;}
+  if(a==='save-career'||a==='retry-save'){if(actionPending){notice='Finish the current action before saving.';render();return;}if(advancing){notice='Wait for the current skip, then save your career.';render();return;}try{await autosaves.flush();notice='Career saved.';}catch(error){notice=error.message;}render();return;}
   if(a==='new-career'&&advancing){notice='Wait for the queued skips before creating another career.';render();return;}
   if(a==='new-career'){await autosaves.flush();if(!await exportCareer())return;settingUp=true;draft={country:world.country,seed:world.seed};catalog=prepareStarters({country:world.country,worldSeed:world.seed});starters=prospectCards(catalog);notice='Your current career was exported. The current save remains until you start the new career.';render();return;}
   if(['day','week','month'].includes(a)){await advance(a==='day'?1:a==='week'?7:30);return;}
@@ -153,6 +152,7 @@ app.addEventListener('click',async e=>{
     'begin-weaning':n=>beginWeaning(n,id),
     'pause-weaning':n=>{const p=ownedHorse(n,id).youngstock.weaning;if(p.startDay==null||p.stage==='complete')throw Error('No active weaning plan.');p.paused=!p.paused;},
     'pause-starting':n=>{const p=ownedHorse(n,id).youngstock.starting;if(p.status==='complete')throw Error('Starting already complete.');p.status='paused';},
+    'auto-start':n=>autoStartHorse(n,id),
     'starting-session':n=>{const h=ownedHorse(n,id),reason=startingSessionReason(n,h);if(reason)throw Error(reason);if(!startingSession(n,h))throw Error('Starting session is currently unavailable.');},
     'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
     'follow-horse':n=>{if(n.followedHorses.includes(id))n.followedHorses=n.followedHorses.filter(x=>x!==id);else n.followedHorses.push(id);},buy:n=>buy(n,id),ppe:n=>prePurchase(n,id),
@@ -174,7 +174,7 @@ app.addEventListener('click',async e=>{
     'review-break':n=>reviewBreak(n,id),dna:n=>dnaPanel(n,id),'cancel-travel':n=>cancelTravel(n,id),'read-news':n=>markNews(n,id,'read'),'bookmark-news':n=>markNews(n,id,'bookmark'),
 
   };
-  if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Changes applied. Autosave pending.',['all-auto','stop-auto','today-auto'].includes(a)?Object.values(world.horses).filter(h=>h.owner==='player').map(h=>h.id):[id,b.dataset.horseId,world.listings.find(l=>l.id===id)?.horseId,world.travel.find(t=>t.id===id)?.horseId]);
+  if(actions[a])await update(actions[a],a==='clear-journal'?'Journal cleared. Permanent histories are preserved.':'Changes applied. Unsaved — click Save career.',['all-auto','stop-auto','today-auto'].includes(a)?Object.values(world.horses).filter(h=>h.owner==='player').map(h=>h.id):[id,b.dataset.horseId,world.listings.find(l=>l.id===id)?.horseId,world.travel.find(t=>t.id===id)?.horseId]);
 });
 app.addEventListener('submit',async e=>{
   e.preventDefault();const form=e.target,f=new FormData(form),kind=form.dataset.form,id=form.dataset.id;

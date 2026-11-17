@@ -14,7 +14,7 @@ const BULKY_FIELDS=['youngstock','traitInstances','coat'];
 const HORSE_HISTORY=['starts','ownership','soundnessHistory','durabilityEvents','valuationHistory','npcTrainingArchive'];
 function bulkyStamps(h){const stamps=Object.fromEntries(BULKY_FIELDS.filter(key=>h[key]!==undefined).map(key=>[key,archiveStamp(h[key])]));repackHorseFields(h);return stamps;}
 export function patchBase(w,{identity=false,fast=false}={}){const entries=Object.entries(w.horses).filter(([,h])=>!fast||h.owner==='player');return {
- fast,rootLengths:fast?Object.fromEntries(Object.entries(w).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])):null,fixtureStates:fast?new Map(w.fixtures.map(f=>[f.id,`${f.status}:${f.day}:${f.entries.length}`])):null,playerIds:fast?new Set(entries.map(([id])=>id)):null,fastChanged:fast?fastDirty(w):null,
+ fast,rootRefs:fast&&identity?Object.fromEntries(Object.entries(w).filter(([,v])=>Array.isArray(v))):null,fixtureRefs:fast&&identity?new Map(w.fixtures.map(f=>[f.id,f])):null,rootLengths:fast?Object.fromEntries(Object.entries(w).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.length])):null,fixtureStates:fast?new Map(w.fixtures.map(f=>[f.id,`${f.status}:${f.day}:${f.entries.length}`])):null,playerIds:fast?new Set(entries.map(([id])=>id)):null,fastChanged:fast?fastDirty(w):null,
  horseStatic:new Map(entries.map(([id,h])=>[id,Object.fromEntries(staticKeys(h).map(key=>[key,staticValue(h,key)]))])),
  horseFields:identity||fast?null:new Map(Object.entries(w.horses).filter(([,h])=>h.owner!=='archive'&&!hasPackedFields(h)).map(([id,h])=>[id,bulkyStamps(h)])),
  horseRefs:identity?new Map(Object.entries(w.horses)):null,
@@ -24,11 +24,19 @@ export function patchBase(w,{identity=false,fast=false}={}){const entries=Object
  completed:new Set(w.fixtures.filter(f=>f.status==='completed').map(f=>f.id)),
  archives:identity||fast?null:new Map(Object.values(w.horses).filter(h=>h.owner==='archive').map(h=>[h.id,archiveStamp(h)]))
 };}
-export function worldPatch(w,base){const {_uiView,...source}=w;if(base.fast)for(const [key,length]of Object.entries(base.rootLengths)){if(!['events','ledger','sessions','fixtures','medical','listings','pregnancies','pregnancyScans','coverings','breedingAttempts','studContracts','auctionEvents','travel','freezer','staff','jockeys','calendarGenerationLog'].includes(key)&&w[key].length===length)delete source[key];}return {
+const FAST_MUTABLE_ROOTS=new Set([...ROOT_HISTORY,'fixtures','medical','listings','pregnancies','pregnancyScans','coverings','breedingAttempts','studContracts','auctionEvents','travel','freezer','staff','jockeys','calendarGenerationLog']);
+function unchangedFastRoot(w,base,key,length){
+ if(base.rootRefs)return !ROOT_HISTORY.includes(key)&&key!=='fixtures'&&base.rootRefs[key]===w[key];
+ return !FAST_MUTABLE_ROOTS.has(key)&&w[key].length===length;
+}
+export function worldPatch(w,base){
+ const {_uiView,...source}=w;
+ if(base.fast)for(const [key,length]of Object.entries(base.rootLengths))if(unchangedFastRoot(w,base,key,length))delete source[key];
+ return {
  ...source,...Object.fromEntries(Object.entries(base.lengths).map(([key,length])=>[key,w[key].slice(length)])),
  results:Object.fromEntries(Object.entries(w.results).filter(([id])=>!base.results.has(id))),
- fixtures:w.fixtures.filter(f=>base.fast?base.fixtureStates.get(f.id)!==`${f.status}:${f.day}:${f.entries.length}`:!base.completed.has(f.id)),
- horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.fast?(h.owner==='player'||base.playerIds.has(id)||base.fastChanged.has(id)):base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
+ fixtures:w.fixtures.filter(f=>base.fast?(base.fixtureRefs?base.fixtureRefs.get(f.id)!==f:base.fixtureStates.get(f.id)!==`${f.status}:${f.day}:${f.entries.length}`):!base.completed.has(f.id)),
+ horses:Object.fromEntries(Object.entries(w.horses).filter(([id,h])=>base.fast?(h.owner==='player'||base.playerIds.has(id)||base.fastChanged.has(id)||base.horseRefs&&base.horseRefs.get(id)!==h):base.horseRefs?base.horseRefs.get(id)!==h:h.owner!=='archive'||base.archives.get(id)!==archiveStamp(h)).map(([id,h])=>{
   const lengths=base.horseLengths.get(id),{_uiArchiveFields,...fields}=h;if(!lengths)return [id,_uiArchiveFields?{...fields,...Object.fromEntries(Object.entries(_uiArchiveFields).map(([key,value])=>[key,decodeField(value)]))}:h];const next={...fields,_historyAppend:true};
   for(const key of staticKeys(h))if(base.horseStatic?.get(id)?.[key]===staticValue(h,key)){delete next[key];next._partialHorse=true;}else next[key]=_uiArchiveFields?.[key]?decodeField(_uiArchiveFields[key]):h[key];
   for(const key of BULKY_FIELDS)if(base.horseFields?.get(id)?.[key]!==undefined&&base.horseFields.get(id)[key]===archiveStamp(h[key])){delete next[key];next._partialHorse=true;}
