@@ -21,6 +21,7 @@ export function breedingReason(w,dam,sire) {
   if(dam.sex!=='filly'||sire.sex!=='colt')return 'A mare must be the dam and a stallion the sire.';
   if(dam.status==='deceased'||sire.status==='deceased')return 'Both parents must be alive.';
   if(age(dam,w.day)<3||age(sire,w.day)<3)return 'Parents must be at least three racing years old.';
+  if(sire.studServiceEndedDay!=null||w.day-sire.born>=25*360)return 'This stallion has retired from stud service.';
   if(sire.status!=='retired'||!sire.brood)return 'Stallion must be retired to stud.';
   if(!dam.brood||dam.status!=='retired')return 'Retire the mare for breeding first.';
   if(dam.activeBreedingAttempt&&w.breedingAttempts?.some(a=>a.id===dam.activeBreedingAttempt&&a.outcome==='pending'))return 'Mare is covered; complete the pregnancy scan before rebooking.';
@@ -77,9 +78,9 @@ export function foal(w,c) {
   event(w,'birth',`${h.name} born to ${dam.name}, by ${sire.name}. ${h.registryEligibility==='alternative'?'Fictional alternative':'Official natural-service'} registry eligibility.`,h.id);event(w,'breeding',`${dam.name} foaled ${h.name}; ${RULES.postFoalingRest}-day recovery plan.`,dam.id);return h;
 }
 export function collect(w,sireId) {
-  const h=ownedHorse(w,sireId);if(h.sex!=='colt'||h.status!=='retired'||!h.brood||age(h,w.day)<3||h.medicalCase)throw Error('Choose a mature, sound retired stud stallion.');
+  const h=ownedHorse(w,sireId);if(h.sex!=='colt'||h.status!=='retired'||!h.brood||age(h,w.day)<3||w.day-h.born>=25*360||h.medicalCase)throw Error('Choose a mature, sound retired stud stallion under 25.');
   if(w.freezer.some(b=>b.sireId===sireId&&b.day===w.day))throw Error('Collection already recorded today.');
-  charge(w,h,RULES.collectionFee,'Semen collection',h.id);const b={id:id(w,'batch'),sireId,owner:'player',day:w.day,doses:5,viability:100,location:w.country};w.freezer.push(b);event(w,'freezer',`${h.name}: five doses collected for storage. Official TB racing requires natural service.`,h.id);return b;
+  charge(w,h,RULES.collectionFee,'Semen collection',h.id);const b={id:id(w,'batch'),sireId,owner:'player',day:w.day,doses:5,viability:100,location:h.location};w.freezer.push(b);event(w,'freezer',`${h.name}: five doses collected for storage. Official TB racing requires natural service.`,h.id);return b;
 }
 export function dispose(w,batchId) {const b=w.freezer.find(x=>x.id===batchId&&x.owner==='player');if(!b)throw Error('Owned batch not found.');b.doses=0;event(w,'freezer',`Stored batch ${b.id} disposed.`,b.sireId);}
 
