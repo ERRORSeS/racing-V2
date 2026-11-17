@@ -14,9 +14,9 @@ const {chromium}=require('playwright');
   await page.reload();await page.getByRole('button',{name:'Breeding',exact:true}).click();
   await page.locator('[name="damId"]').selectOption(ids.dam);await page.locator('[name="sireId"]').selectOption(ids.sire);
   await page.locator('[data-cover-eligibility]').filter({hasText:'Eligible for the selected covering service today'}).waitFor();
-  await page.getByRole('button',{name:'Record covering & schedule checks',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#save-status')?.textContent==='Saved'&&/covered|Covering/i.test(document.querySelector('[data-cover-feedback]')?.textContent||''));
+  await page.getByRole('button',{name:'Record covering & schedule checks',exact:true}).click();await page.getByRole('button',{name:'Save career',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#save-status')?.textContent==='Saved'&&/covered|Covering/i.test(document.querySelector('[data-cover-feedback]')?.textContent||''));
   await page.getByRole('button',{name:'Dashboard',exact:true}).click();await page.locator(`[data-horse="${ids.learner}"]`).first().click();
-  await page.locator('[data-action="profile-tab"][data-id="Training"]').click();await page.locator('form[data-form="workout"] [name="activity"]').selectOption('Sprint work');await page.getByRole('button',{name:'Run one chosen workout',exact:true}).click();
+  await page.locator('[data-action="profile-tab"][data-id="Training"]').click();await page.locator('form[data-form="workout"] [name="activity"]').selectOption('Sprint work');await page.getByRole('button',{name:'Run one chosen workout',exact:true}).click();await page.getByRole('button',{name:'Save career',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#save-status')?.textContent==='Saved');await page.reload();await page.getByRole('button',{name:'Horses',exact:true}).waitFor();
   const result=await page.evaluate(async ids=>{
    const r=await(await fetch('./release.json')).json(),{loadCareer,validate}=await import(`./${r.assetBase}/storage.js`),w=await loadCareer();validate(w);

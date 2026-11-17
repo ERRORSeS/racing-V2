@@ -116,7 +116,7 @@ export function train(w,h,manual=false,activity=null) {
  const modifiers=traitModifiers(h,{phase:'training'}),trainer=w.staff.find(s=>s.owner===h.owner&&s.role==='Trainer'),quality=trainer?(.85+trainer.skill/300):1,changes=[];
  const keys=[...plan.primary,...plan.secondary];
  for(const key of keys){const before=h.skills[key],ceiling=usableCeiling(h,key,w.day),headroom=Math.max(0,ceiling-before),scale=plan.primary.includes(key)?1:.35;
-  const gain=restricted?0:RULES.trainingGain*scale*quality*MOOD_FACTORS[h.mood]*(1-h.fatigue/150)*(h.soundness/100)*(1+(modifiers.values.learning||0))*(.8+h.skills.trainability/250+(modifiers.values.handling||0)*.5)*(headroom/Math.max(1,ceiling));
+  const gain=restricted?0:RULES.trainingGain*(h.owner==='player'?2:1)*scale*quality*MOOD_FACTORS[h.mood]*(1-h.fatigue/150)*(h.soundness/100)*(1+(modifiers.values.learning||0))*(.8+h.skills.trainability/250+(modifiers.values.handling||0)*.5)*(headroom/Math.max(1,ceiling));
   if(headroom>0)h.skills[key]=Math.min(ceiling,before+Math.max(0,gain));
   const change=h.skills[key]-before;changes.push({skill:key,before,after:h.skills[key],gain:change,usableCeiling:ceiling,status:headroom<.5?'Maintenance / near current ceiling':ceiling<h.potential[key]?'Maturity or safe functional limit':'Developing'});
   h.development.lastProgress[key]=w.day;h.workoutCounts[key]=(h.workoutCounts[key]||0)+1;

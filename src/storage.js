@@ -125,10 +125,10 @@ export async function unpack(data){if(typeof data==='string')return data;return 
 let persistedBase=null;
 export function releaseCareerBaseline(){if(persistedBase)persistedBase.base=null;}
 const MAX_DELTA_WRITES=24,MAX_MANIFEST_CHUNKS=1024;
-export async function saveCareer(w,{replace=false,preparedPatch=null,initialBase=null,previousWorld=null,onProgress=()=>{}}={}){
+export async function saveCareer(w,{replace=false,forceFull=false,preparedPatch=null,initialBase=null,previousWorld=null,onProgress=()=>{}}={}){
  const deltaBase=persistedBase?.base||initialBase;onProgress({stage:'Checking checkpoint'});const trustedFast=!replace&&w.settings.npcProgression===false&&(preparedPatch||deltaBase?.fast)&&persistedBase?.reference?.deref()===(previousWorld||w)&&persistedBase.revision===(w.storageRevision||0);let fastPatch=null;if(trustedFast){fastPatch=preparedPatch||worldPatch(w,deltaBase);const ids=new Set(Object.keys(fastPatch.horses));for(const r of Object.values(fastPatch.results))for(const row of r.rows)if(!row.fastOpponent)ids.add(row.horseId);validate(w,{horseIds:[...ids],resultIds:Object.keys(fastPatch.results)});}else validate(w);onProgress({stage:'Preparing saved records'});
  const fast=w.settings.npcProgression===false;
- const delta=!replace&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(fast||((persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS))&&!!(preparedPatch||deltaBase);
+ const delta=!replace&&!forceFull&&persistedBase?.revision===(w.storageRevision||0)&&persistedBase.manifest&&(fast||((persistedBase.deltaDepth||0)<MAX_DELTA_WRITES&&(persistedBase.chunkCount||0)<MAX_MANIFEST_CHUNKS))&&!!(preparedPatch||deltaBase);
  const checkpoint=delta&&fast?fastCheckpoint(w,preparedPatch||fastPatch||worldPatch(w,deltaBase),persistedBase.fastEpoch,persistedBase.chunks):null;
  const records=[];let batch=[];const snapshot=checkpoint?.patch||(delta?(preparedPatch||fastPatch||worldPatch(w,deltaBase)):w);onProgress({stage:'Encoding checkpoint'});
  for(const part of snapshotParts(snapshot,{delta})){const {payload,...meta}=part,index=records.length;records.push(null);batch.push((async()=>{records[index]={...meta,checksum:snapshotHash(payload),payload:payload.length<2048?payload:await pack(payload)};})());if(batch.length===4){await Promise.all(batch);batch=[];if(records.length%16===0)onProgress({stage:`Encoding ${records.length} saved records`});}}await Promise.all(batch);

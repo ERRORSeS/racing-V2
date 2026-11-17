@@ -92,6 +92,20 @@ export function startingSession(w,h){
  if(p.step===10){p.status='complete';p.completedDay=w.day;event(w,'development',`${h.name} cleared for an appropriate first race after completing all ten starting checkpoints.`,h.id);}
  return true;
 }
+// Explicit player convenience action: handling education only, not genetics,
+// conformation or athletic skill potential. Existing milestones stay auditable.
+export function autoStartHorse(w,horseId){
+ const h=ownedHorse(w,horseId),reason=startingBlocker(w,h);if(reason)throw Error(reason);
+ const y=h.youngstock,p=y.starting;
+ if(p.status==='complete'&&Object.values(y.skills).every(v=>v===100))throw Error('Handling and starting are already complete.');
+ for(const key of Object.keys(y.skills))y.skills[key]=100;
+ p.status='complete';p.step=STARTING_STEPS.length;p.startDay??=w.day;p.completedDay=w.day;p.completionMethod='instant_handling';
+ p.provenance='Player instant-start control: maximum handling and completed starting';
+ for(const m of p.milestones){m.status='passed';m.passedDay??=w.day;m.completionMethod='instant_handling';}
+ p.log.push({day:w.day,checkpoint:'Instant starting',passed:true,report:'Player maximized handling education and completed starting; athletic skills and genetic ceilings unchanged.',staff:'Player convenience control'});
+ h.autoTrain=true;event(w,'development',`${h.name}: handling maximized; starting completed with the instant-start control. Auto Training enabled.`,h.id);
+ return h;
+}
 export function educationSession(w,h,code=null){
  const y=h.youngstock,d=chronologicalDays(h,w.day);if(d>=720)return false;if(y.lastSessionDay===w.day||h.lastTrainingDay===w.day)return false;
  if(!y.water||!y.shelter||h.medicalCase||h.clearance==='No Work'||h.fatigue>30||h.travelState==='InTransit')return false;
