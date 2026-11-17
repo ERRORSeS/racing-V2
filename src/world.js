@@ -1,3 +1,4 @@
+import {monthlyLifespans} from './lifespan.js';
 import {fastMode,fastOwned,relatedBreeding} from './fast-mode.js';
 import {repackHorseFields} from './archive-fields.js';
 import {beginPopulation,liveHorses} from './simulation-population.js';
@@ -12,7 +13,7 @@ import { rotateAuctions } from './auction-catalog.js';
 import { autoRegister } from './auto-register.js';
 import { updateForm } from './form.js';
 import { youngstockDay, initializeYoungstock, createStartingPlan } from './youngstock.js';
-import { updateStudFees, recruitAccomplishedSires } from './stud.js';
+import { updateStudFees, recruitAccomplishedSires, refreshStudIntake } from './stud.js';
 import { seedHistory, seedPedigreeCareers } from './history.js';
 import { FIELD_DENSITY } from './race-rules.js';
 import { processTravel } from './travel.js';
@@ -91,7 +92,6 @@ function npcMonth(w) {
     if(w.day%360===30){const dam=horses.find(h=>h.brood&&h.sex==='filly'&&!h.pregnancy&&h.postFoalingUntil<=w.day&&age(h,w.day)<19);const sires=breedingSires.filter(h=>h.location===dam?.location);if(dam&&sires.length){try{cover(w,dam.id,pick(w,sires).id,'natural',null,true);}catch{/* Incompatible pairs remain unbred. */}}}
     if(w.day%360===0){const active=horses.filter(h=>h.status==='active').length;if(active<6){const h=horse(w,owner,o.country,{},1,w.day-720);h.autoTrain=true;h.historyRecorded=true;event(w,'world',`${o.name} introduces new prospect ${h.name}.`,h.id);}}
     if(random(w)<.2){const h=horses.find(h=>h.status==='active'&&npcConsignmentAllowed(w,h)&&!listed.has(h.id)&&!booked.has(h.id));if(h)w.listings.push({id:id(w,'listing'),horseId:h.id,seller:owner,price:appraisal(w,h),reserve:appraisal(w,h),kind:random(w)<.5?'private':'auction',sold:false,closed:false,day:w.day,endDay:w.day+7,bids:[]});}
-    for(const h of horses)if(age(h,w.day)>28&&w.settings.fatalities&&random(w)<.01){h.status='deceased';h.deceasedDay=w.day;h.brood=false;event(w,'life',`${h.name} died in retirement. Their permanent records remain available.`,h.id);}
   }
 }
 export function advanceWorld(w,days){for(const day of advanceSteps(w,days)){/* Synchronous engine API. */}}
@@ -113,10 +113,11 @@ export function* advanceSteps(w,days) {
     horses=(fastMode(w)?fastOwned(w):liveHorses(w).slice());for(const h of horses){if(h.owner!=='archive')exposure(w,h,'turnout');repackHorseFields(h);}
     marketDay(w);
     if(w.day%30===0){
+      monthlyLifespans(w);
       for(const h of fastMode(w)?fastOwned(w):Object.values(w.horses)){monthlyV7Review(w,h);repackHorseFields(h);}
       for(const b of w.freezer)if(b.doses>0)b.viability=Math.max(0,b.viability-.15);
       for(const s of w.staff)if(s.owner==='player'){try{transact(w,-BigInt(s.wage),'Staff wages',s.id);}catch{event(w,'staff',`Wage unpaid for ${s.name}; service suspended.`);s.owner='unpaid';}}
-      if(!fastMode(w))npcMonth(w);for(const h of fastMode(w)?fastOwned(w):Object.values(w.horses)){if(h.owner!=='archive')refreshMaterialValue(w,h);repackHorseFields(h);}rotateAuctions(w);if(!fastMode(w)){recruitAccomplishedSires(w);updateStudFees(w);}schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
+      if(!fastMode(w))npcMonth(w);for(const h of fastMode(w)?fastOwned(w):Object.values(w.horses)){if(h.owner!=='archive')refreshMaterialValue(w,h);repackHorseFields(h);}rotateAuctions(w);if(!fastMode(w)){recruitAccomplishedSires(w);updateStudFees(w);}if(w.day%90===0)refreshStudIntake(w);schedule(w,w.day);monthlyDigest(w);if(w.day%360===0)annualAwards(w);
 
     }
     yield w.day;

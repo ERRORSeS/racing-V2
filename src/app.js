@@ -1,3 +1,4 @@
+import {createHorseGroup,addHorseToGroup} from './horse-groups.js';
 import {setNpcProgression} from './fast-mode.js';
 import {hydrateDisplayArchive} from './ui-snapshot.js';
 import {closedAuctionHistory} from './auction-ui.js';
@@ -110,7 +111,8 @@ app.addEventListener('click',async e=>{
     try{await autosaves.flush();world=(await workerRequest('restore-backup',{})).world;rememberSavedWorld(world);state.selected=null;state.resultId=null;state.loadedResult=null;state.profileStack=[];state.raceCountry=world.country;resetBreedingSelection();saveStatus='Saved';notice='Previous autosave restored and saved as a complete checkpoint.';}
     catch(error){notice=error.message;}finally{actionPending=false;render();}return;
   }
-  if(a==='npc-mode'){await update(n=>setNpcProgression(n,n.settings.npcProgression===false),world.settings.npcProgression===false?'Live NPC simulation enabled.':'Fast skips enabled. NPC growth and background progression are paused.',[]);return;}
+  if(a==='horse-group'){state.horseGroupId=id;state.page=0;state.query='';render();return;}
+  if(a==='npc-mode'){await update(n=>setNpcProgression(n,n.settings.npcProgression===false),world.settings.npcProgression===false?'Live NPC simulation enabled.':'Fast skips enabled. Background NPC progression is paused; quarterly stud arrivals and natural lifespans remain.',[]);return;}
   if(a==='reload-career'){location.reload();return;}
   if(!world)return;
   if(a==='reset-race-filters'){state.raceCountry='All';state.raceType='All';state.raceAge='All';state.raceMonth='Upcoming';state.page=0;render();return;}
@@ -152,6 +154,7 @@ app.addEventListener('click',async e=>{
     'begin-weaning':n=>beginWeaning(n,id),
     'pause-weaning':n=>{const p=ownedHorse(n,id).youngstock.weaning;if(p.startDay==null||p.stage==='complete')throw Error('No active weaning plan.');p.paused=!p.paused;},
     'pause-starting':n=>{const p=ownedHorse(n,id).youngstock.starting;if(p.status==='complete')throw Error('Starting already complete.');p.status='paused';},
+    'collect-own':n=>collect(n,id),
     'auto-start':n=>autoStartHorse(n,id),
     'starting-session':n=>{const h=ownedHorse(n,id),reason=startingSessionReason(n,h);if(reason)throw Error(reason);if(!startingSession(n,h))throw Error('Starting session is currently unavailable.');},
     'clear-journal':n=>{clearJournal(n);state.journalArchive=false;},
@@ -187,6 +190,8 @@ app.addEventListener('submit',async e=>{
   if(kind==='skip'){await advance(Number(f.get('amount'))*({Days:1,Months:30,Years:360}[f.get('unit')]));return;}
   if(advancing){notice='Time is advancing; changes resume after queued skips finish.';if(kind==='cover')state.coverNotice=notice;render();return;}
   const actions={
+    'horse-group':n=>{const group=createHorseGroup(n,f.get('name'));state.horseGroupId=group.id;},
+    'horse-group-add':n=>addHorseToGroup(n,id,f.get('groupId')),
     'durability-creative':n=>editDurability(n,ownedHorse(n,id),{score:Number(f.get('score')),years:Number(f.get('years'))}),
     intensity:n=>{const h=ownedHorse(n,id),intensity=f.get('intensity');if(!['Rest','Light','Balanced','Intense'].includes(intensity))throw Error('Choose a training intensity.');const threshold=Number(f.get('recoveryFatigueThreshold'));if(!Number.isFinite(threshold)||threshold<10||threshold>70)throw Error('Choose a recovery threshold from 10 to 70.');h.trainingIntensity=intensity;h.protectRecovery=f.has('protectRecovery');h.recoveryFatigueThreshold=threshold;},
     starting:n=>{startHorse(n,id,f.get('pace'));ownedHorse(n,id).autoTrain=true;},

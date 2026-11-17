@@ -1,3 +1,4 @@
+import {validateHorseGroups} from './horse-groups.js';
 import {fastCheckpoint} from './fast-checkpoint.js';
 import {packRaceArchives} from './immutable-race-archive.js';
 import {repackHorseFields,packArchivedFields} from './archive-fields.js';
@@ -73,7 +74,7 @@ export function validate(w,{horseIds=null,resultIds=null}={}){
  for(const p of w.pregnancies||[]){if(!w.horses[p.mareId]||!w.horses[p.sireId]||!attemptIds.has(p.breedingAttemptId)||p.liveFoalId&&!w.horses[p.liveFoalId])throw Error('Invalid pregnancy relationship.');if(!['foaled','lost'].includes(p.status)){if(activePregnancies.has(p.mareId))throw Error('Multiple active pregnancies for one mare.');activePregnancies.add(p.mareId);}}
  for(const c of w.coverings)if(!w.horses[c.damId]||!w.horses[c.sireId]||c.foalId&&!w.horses[c.foalId])throw Error('Invalid covering.');
  for(const b of w.freezer)if(!w.horses[b.sireId]||!Number.isInteger(b.doses)||b.doses<0||!Number.isFinite(b.viability))throw Error('Invalid freezer stock.');
- return w;
+ validateHorseGroups(w);return w;
 }
 function hash(s){let n=2166136261;for(const c of s)n=Math.imul(n^c.charCodeAt(0),16777619);return (n>>>0).toString(16);}
 export function encode(w){validate(w);const payload=JSON.stringify(w);if(/[<>]/.test(payload))throw Error('Use plain text without angle brackets in saved names or notes.');return JSON.stringify({format:'thoroughbred-racing',checksum:hash(payload),payload});}

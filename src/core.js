@@ -35,7 +35,7 @@ export function transact(w,amount,category,source){const next=BigInt(w.balance)+
 export function setBalance(w,value){const amount=cents(value);transact(w,BigInt(amount)-BigInt(w.balance),'Creative Balance Adjustment','settings');}
 export function phenotype(h,day=0){return phenotypeDescription(h,day);}
 
-export function ownedHorse(w, horseId) { const h=w.horses[horseId]; if(!h || h.owner!=='player')throw Error('Choose a horse you own.');return h; }
+export function ownedHorse(w, horseId) { const h=w.horses[horseId]; if(!h || h.owner!=='player')throw Error('Choose a horse you own.');if(h.status==='deceased')throw Error('This horse is deceased; Memorial records are read-only.');return h; }
 export function charge(w,h,amount,category,source) {
  if(h.owner==='player')transact(w,-BigInt(amount),category,source);
  else if(w.owners[h.owner] && h.owner!=='archive'){const o=w.owners[h.owner];if(BigInt(o.balance||'0')<BigInt(amount))throw Error('Stable budget cannot cover this service.');o.balance=(BigInt(o.balance)-BigInt(amount)).toString();}
