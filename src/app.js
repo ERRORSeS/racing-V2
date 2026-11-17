@@ -22,7 +22,7 @@ import { prepareStarters, prospectCards } from './starters.js';
 import { COUNTRIES,RULES } from './rules.js';
 import { buy, setBalance, rename, train, clearJournal, changeCountry, hire, dismiss, setFieldDensity } from './world.js';
 import { ownedHorse } from './core.js';
-import { setCare, vet, farrier, retire, scheduledTraining, medicalDecision } from './care.js';
+import { setCare, setTrainingProgram, vet, farrier, retire, scheduledTraining, medicalDecision } from './care.js';
 import { enterRace, scratchRace, travel, fieldHealth } from './racing.js';
 import { listHorse, bid, withdrawListing, prePurchase } from './market.js';
 import { cover, collect, dispose, transferBatch } from './breeding.js';
@@ -193,7 +193,7 @@ app.addEventListener('submit',async e=>{
     education:n=>{if(!educationSession(n,ownedHorse(n,id),f.get('activity')))throw Error('Education paused for rest, travel or medical care, or already completed today.');},
     'youngstock-care':n=>setYoungstockCare(n,id,{diet:f.get('diet'),turnoutHours:Number(f.get('turnoutHours')),socialGroup:f.get('socialGroup'),companions:f.getAll('companion'),water:f.has('water'),shelter:f.has('shelter'),autoCare:f.has('autoCare'),autoEducation:f.has('autoEducation'),autoWean:f.has('autoWean')}),
     'auto-race':n=>{const h=ownedHorse(n,id),interval=Number(f.get('interval')),maxTier=f.get('maxTier'),goal=f.get('goal');if(![7,14,21,30,45,60].includes(interval)||!['Auto','2','3','4','5','6','7'].includes(maxTier)||!['General','USA Derby'].includes(goal))throw Error('Choose a valid race policy.');h.autoRace=f.has('enabled');h.autoRaceInterval=interval;h.autoRaceMaxTier=maxTier;h.autoRaceGoal=goal;h.autoRaceStatus=h.autoRace?'Will seek a suitable eligible local race on the next simulated day.':'Automatic race registration off.';},
-    workout:n=>{const h=ownedHorse(n,id);h.trainingPlan=f.get('activity');if(!train(n,h,true,f.get('activity')))throw Error('This workout is not currently permitted.');},
+    workout:n=>{if(e.submitter?.value==='save-program'){setTrainingProgram(n,id,f.get('activity'));return;}if(!train(n,ownedHorse(n,id),true,f.get('activity')))throw Error('This workout is not currently permitted.');},
     break:n=>putOnBreak(n,id,Number(f.get('days')),f.get('reason')),therapy:n=>startTherapy(n,id,Number(f.get('months'))),
     creative:n=>editGenetics(n,id,{loci:Object.fromEntries(Object.keys(LOCI).map(k=>[k,[f.get(`${k}-0`),f.get(`${k}-1`)]])),caps:Object.fromEntries(SKILL_IDS.map(k=>[k,Number(f.get(`cap-${k}`))]))},f.has('acknowledge')),
     rename:n=>rename(n,id,f.get('name')),
@@ -215,7 +215,7 @@ app.addEventListener('submit',async e=>{
     cover:n=>cover(n,f.get('damId'),f.get('sireId'),f.get('method'),f.get('batchId')),
     collect:n=>collect(n,f.get('sireId')),batch:n=>transferBatch(n,id,f.get('owner'),f.get('country')),
   };
-  if(actions[kind])await update(actions[kind],kind==='cover'?'Covering recorded. Pregnancy is not yet confirmed; the first scan is due in about 15 days.':undefined,kind==='settings'?[]:kind==='travel'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
+  if(actions[kind])await update(actions[kind],kind==='workout'&&e.submitter?.value==='save-program'?'Training program saved. It stays selected until you save another. Save career before leaving.':kind==='cover'?'Covering recorded. Pregnancy is not yet confirmed; the first scan is due in about 15 days.':undefined,kind==='settings'?[]:kind==='travel'?Object.keys(world.horses):[id,f.get('horseId'),f.get('sireId'),f.get('damId'),world.listings.find(l=>l.id===id)?.horseId]);
   if(kind==='cover'){state.coverNotice=notice;render();app.querySelector('[data-cover-feedback]')?.scrollIntoView({block:'center'});}
 });
 app.addEventListener('toggle',e=>{
