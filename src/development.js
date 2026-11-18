@@ -1,11 +1,11 @@
 import { traitModifiers } from './traits.js';
 import { SKILL_DEFINITIONS, SKILL_IDS } from './skill-definitions.js';
-import { founderGenome, inheritGenome, legacyGenome, geneticCeilings, coatFromGenome, incompatibleGenotypes } from './genetics.js';
+import { founderGenome, breedingGenome, inheritGenome, legacyGenome, geneticCeilings, coatFromGenome, incompatibleGenotypes } from './genetics.js';
 import { clamp } from './rules.js';
 import { seed, integer } from './random.js';
 export function initializeDevelopment(w,h,fresh=false){
  if(!h.genome){
-  if(fresh){const sire=w.horses[h.sire],dam=w.horses[h.dam];h.genome=sire?.genome&&dam?.genome?inheritGenome(w,sire.genome,dam.genome):founderGenome(w,!!w.settings?.expandedGenetics);for(let attempt=0;incompatibleGenotypes(h.genome)&&attempt<100;attempt++)h.genome=inheritGenome(w,sire.genome,dam.genome);if(incompatibleGenotypes(h.genome))throw Error('Unable to seed a viable lineage.');h.coat=coatFromGenome(h.genome);h.potential=geneticCeilings(h.genome);}
+  if(fresh){const sire=w.horses[h.sire],dam=w.horses[h.dam];h.genome=sire?.genome&&dam?.genome?inheritGenome(w,breedingGenome(sire),breedingGenome(dam)):founderGenome(w,!!w.settings?.expandedGenetics);for(let attempt=0;incompatibleGenotypes(h.genome)&&attempt<100;attempt++)h.genome=inheritGenome(w,breedingGenome(sire),breedingGenome(dam));if(incompatibleGenotypes(h.genome))throw Error('Unable to seed a viable lineage.');h.coat=coatFromGenome(h.genome);h.potential=geneticCeilings(h.genome);}
   else {h.genome=legacyGenome(h,w.seed);const mean=Object.values(h.potential).reduce((a,b)=>a+b,0)/Object.keys(h.potential).length,shift=(mean-58)/29;for(const block of Object.values(h.genome.quantitativeHaplotypes))for(const hap of block)for(let i=0;i<hap.length;i++)hap[i]=clamp(Math.round(hap[i]+shift),0,4);}
  }
  const local={rng:seed(`${w.seed}:${h.id}:skill-migration`)},existing=Object.values(h.potential).reduce((a,b)=>a+b,0)/Math.max(1,Object.keys(h.potential).length),current=Object.values(h.skills).reduce((a,b)=>a+b,0)/Math.max(1,Object.keys(h.skills).length);
@@ -49,3 +49,19 @@ export function classProjection(h,context={}){
  return {score,band:uncertain?'Unproven':labels[index],low:labels[Math.max(0,index-(uncertain?2:1))],high:labels[Math.min(labels.length-1,index+1)],confidence:Math.min(.95,.2+evidence*.04),note:'A competitiveness estimate at best mature preparation, not permission to enter or a guaranteed racing level.'};
 }
 export function distanceFromGenome(h){const p=h.potential,alleles=h.genome?.loci.MSTN?.alleles,shift=alleles?.includes(null)?0:alleles?.filter(a=>a==='T').length*180-180;return Math.round(clamp(1600+(p.stamina-p.speed)*18+shift,900,3200)/100)*100;}
+
+// Homebreds begin as newborns, whereas generated race stock arrives developed.
+// Express inherited baseline ability through growth, not parental prize money.
+export function developBornHorse(w,h){
+ if(!h.foalingRecordId||h.status!=='active'||h.medicalCase||h.clearance==='No Work')return false;
+ const y=h.youngstock;if(!y?.water||!y.shelter||y.bodyCondition<3)return false;
+ const progress=clamp((w.day-h.born)/720,0,1);let changed=false;
+ const education=Object.values(y.skills).reduce((n,v)=>n+v,0)/Math.max(1,Object.keys(y.skills).length)/100;
+ for(const key of SKILL_IDS){
+  const group=SKILL_DEFINITIONS[key].group,fraction=group==='aptitude'?.65:group==='disposition'?.60:group==='education'?.30+education*.15:.50;
+  const target=Math.min(usableCeiling(h,key,w.day),5+Math.max(0,h.potential[key]*fraction-5)*progress);
+  if(h.skills[key]<target){h.skills[key]=target;changed=true;}
+ }
+ if(changed)h.development.naturalFoundation={version:1,throughAgeDays:Math.min(720,Math.max(0,w.day-h.born)),basis:'Chronological growth and own handling education; inherited potential caps retained'};
+ return changed;
+}

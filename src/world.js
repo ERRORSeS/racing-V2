@@ -62,7 +62,7 @@ export function createWorld(config) {
     let h;
     if(opts.catalogId){h=prepared.get(opts.catalogId);if(!h)throw Error('Prospect identity is missing.');
       const changedStats=opts.potential!==h.potential.speed||opts.ability!==h.skills.speed;
-      if(changedStats)for(const k of SKILLS){h.potential[k]=opts.potential;h.skills[k]=opts.ability;}
+      if(changedStats)applyStarterOverrides(h,{potential:opts.potential,ability:opts.ability});
       h.sex=opts.sex;h.temperament=opts.temperament;h.spookiness=opts.spookiness;h.surface=opts.surface;h.distance=opts.distance;h.location=config.country;
       const oldBase=h.coat.extension==='ee'?'chestnut':h.coat.agouti==='aa'?'black':'bay';
       if(opts.base!==oldBase&&opts.base!=='Random'){h.coat.extension=opts.base==='chestnut'?'ee':'EE';if(opts.base!=='chestnut')h.coat.agouti=opts.base==='black'?'aa':'AA';}

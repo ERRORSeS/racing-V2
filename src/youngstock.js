@@ -1,3 +1,4 @@
+import {developBornHorse} from './development.js';
 import { changeFatigue } from './fatigue.js';
 import { seed } from './random.js';
 import { age, clamp } from './rules.js';
@@ -143,7 +144,7 @@ export function setYoungstockCare(w,horseId,plan){
 }
 export function youngstockDay(w,h){
  if(h.status==='deceased'||h.owner==='archive')return;
- initializeYoungstock(w,h);const y=h.youngstock,d=chronologicalDays(h,w.day),height=h.height;
+ initializeYoungstock(w,h);developBornHorse(w,h);const y=h.youngstock,d=chronologicalDays(h,w.day),height=h.height;
  if(height.lastGrowthDay!==w.day){height.currentMm=Math.max(height.currentMm,Math.round(height.geneticMatureMm*growthFraction(d,height.maturityRate)));height.uncertaintyMm=d>=1440?10:Math.round(15+65*(1-d/1440));height.lastGrowthDay=w.day;if(d<=1440&&d%90===0&&!height.measurements.some(m=>m.day===w.day))height.measurements.push({day:w.day,heightMm:height.currentMm,source:'scheduled staff measurement'});}
  const stage=lifeStage(h,w.day);if(y.lastStage!==stage){y.lastStage=stage;event(w,'development',`${h.name}: life stage ${stage}; chronological ${Math.floor(d/30)} months, official racing age ${age(h,w.day)}.`,h.id);}
  if(d<720&&y.autoCare&&y.lastCareDay!==w.day){
