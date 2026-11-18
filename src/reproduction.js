@@ -20,7 +20,7 @@ export function initializeReproduction(w){
  }
  // Completed pregnancies remain permanent history, never an active booking.
  for(const p of w.pregnancies)if(!active(p)){
-  const h=w.horses[p.mareId];if(!h)continue;
+  const h=w.horses[p.mareId];if(p.status==='foaled'&&w.horses[p.liveFoalId]&&!w.horses[p.liveFoalId].foalingRecordId){w.horses[p.liveFoalId].foalingRecordId=p.breedingAttemptId;markFastHorse(w,p.liveFoalId);}if(!h)continue;
   if(h.pregnancy===p.id||h.pregnancy===p.breedingAttemptId){h.pregnancy=null;markFastHorse(w,h.id);}
   if(h.activeBreedingAttempt===p.breedingAttemptId){h.activeBreedingAttempt=null;markFastHorse(w,h.id);}
  }

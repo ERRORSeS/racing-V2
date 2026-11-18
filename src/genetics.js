@@ -45,14 +45,24 @@ export function inheritGenome(w,sire,dam){
  // KIT-region haplotypes retain phase; the small recombination default is a game approximation.
  for(const [parent,position]of [[sire,0],[dam,1]]){let side=integer(w,0,1);loci.KIT.alleles[position]=parent.loci.KIT.alleles[side];if(random(w)<.02)side=1-side;loci.TOBIANO.alleles[position]=parent.loci.TOBIANO.alleles[side];}
  const quantitativeHaplotypes={};for(const key of Object.keys(sire.quantitativeHaplotypes))quantitativeHaplotypes[key]=[gamete(w,sire.quantitativeHaplotypes[key]),gamete(w,dam.quantitativeHaplotypes[key])];
- return {version:1,parentageStatus:'inherited',sourceConfidence:sire.sourceConfidence==='approximate'||dam.sourceConfidence==='approximate'?'approximate':'modeled',modeAtBirth:sire.modeAtBirth==='realistic'&&dam.modeAtBirth==='realistic'?'realistic':'expanded',loci,quantitativeHaplotypes,developmentalModifiers:Object.fromEntries(SKILL_IDS.map(k=>[k,integer(w,-5,5)])),modifierAlleles:{shade:clamp(Math.round((sire.modifierAlleles.shade+dam.modifierAlleles.shade)/2)+integer(w,-20,20)),white:clamp(Math.round((sire.modifierAlleles.white+dam.modifierAlleles.white)/2)+integer(w,-20,20)),grayRate:clamp(Math.round((sire.modifierAlleles.grayRate+dam.modifierAlleles.grayRate)/2)+integer(w,-15,15),50,150)},knownGeneticTests:[],healthVariantFlags:[],novelMutationEvents:[]};
+ const potentialOffsets=Object.fromEntries(SKILL_IDS.map(k=>[k,((sire.potentialOffsets?.[k]||0)+(dam.potentialOffsets?.[k]||0))/2]).filter(([,v])=>v!==0));
+ return {...(Object.keys(potentialOffsets).length?{potentialOffsets}:{}),version:1,parentageStatus:'inherited',sourceConfidence:sire.sourceConfidence==='approximate'||dam.sourceConfidence==='approximate'?'approximate':'modeled',modeAtBirth:sire.modeAtBirth==='realistic'&&dam.modeAtBirth==='realistic'?'realistic':'expanded',loci,quantitativeHaplotypes,developmentalModifiers:Object.fromEntries(SKILL_IDS.map(k=>[k,integer(w,-5,5)])),modifierAlleles:{shade:clamp(Math.round((sire.modifierAlleles.shade+dam.modifierAlleles.shade)/2)+integer(w,-20,20)),white:clamp(Math.round((sire.modifierAlleles.white+dam.modifierAlleles.white)/2)+integer(w,-20,20)),grayRate:clamp(Math.round((sire.modifierAlleles.grayRate+dam.modifierAlleles.grayRate)/2)+integer(w,-15,15),50,150)},knownGeneticTests:[],healthVariantFlags:[],novelMutationEvents:[]};
 }
-export function geneticCeilings(g){
+export function geneticCeilings(g,{unclamped=false}={}){
  const out={};for(let i=0;i<SKILL_IDS.length;i++){
   const k=SKILL_IDS[i],shared=g.quantitativeHaplotypes.SIM_BLOCK_0,own=g.quantitativeHaplotypes[`SIM_BLOCK_${1+i%3}`];let sum=0;
   for(let m=0;m<8;m++)sum+=(shared[0][m]+shared[1][m]-4)*.4+(own[0][(m+i)%8]+own[1][(m+i)%8]-4)*.6;
-  out[k]=clamp(Math.round(GENETIC_MODEL.populationMean+sum*GENETIC_MODEL.alleleWeight+(g.developmentalModifiers[k]||0)),GENETIC_MODEL.minimum,100);
+  const score=GENETIC_MODEL.populationMean+sum*GENETIC_MODEL.alleleWeight+(g.developmentalModifiers[k]||0)+(g.potentialOffsets?.[k]||0);out[k]=unclamped?score:clamp(Math.round(score),GENETIC_MODEL.minimum,100);
  }return out;
+}
+// Some prepared/creative horses have explicit intrinsic caps independent of
+// the sampled markers. Reconcile those caps for breeding without copying learned
+// skills, winnings or changing either parent's stored DNA or past offspring.
+export function breedingGenome(h){
+ const g=h.genome,uniformCaps=new Set(SKILL_IDS.map(k=>h.potential[k])).size===1;if(!['creativeEdited','legacyInferred'].includes(g.parentageStatus)&&!uniformCaps)return g;
+ const expressed=geneticCeilings(g);if(SKILL_IDS.every(k=>h.potential[k]===expressed[k]))return g;
+ const base=geneticCeilings({...g,potentialOffsets:undefined},{unclamped:true});
+ return {...g,potentialOffsets:Object.fromEntries(SKILL_IDS.map(k=>[k,h.potential[k]-base[k]]))};
 }
 export function incompatibleGenotypes(g){const a=g.loci.FRAME?.alleles||[],kit=g.loci.KIT?.alleles||[];return a.every(x=>x==='O')?'EDNRB O/O is incompatible with a viable foal.':kit.every(x=>x==='W5')?'This modeled KIT W5/W5 combination is incompatible.':null;}
 export function matingGeneticRisk(sire,dam){for(const [key,allele]of [['FRAME','O'],['KIT','W5']])if(sire.genome?.loci[key]?.alleles.includes(allele)&&dam.genome?.loci[key]?.alleles.includes(allele))return `Both carry ${allele}; incompatible homozygous outcomes are possible. This mating is blocked in the welfare-safe game model.`;return null;}
@@ -73,4 +83,4 @@ export function phenotypeDescription(h,day=0){
  return `${c.shade.toLowerCase()} ${display}${gray}${c.pattern?` • ${c.expression} ${c.pattern}`:c.tobiano?' • fictional tobiano':''}`;
 }
 export function locusOutcomes(sire,dam,key){const a=sire.genome?.loci[key],b=dam.genome?.loci[key];if(!a||!b||a.confidence==='unknown'||b.confidence==='unknown'||[...a.alleles,...b.alleles].includes(null))return {unknown:true,message:'Unknown alleles: exact probabilities are unavailable.'};const counts={};for(const x of a.alleles)for(const y of b.alleles){const k=[x,y].sort().join('/');counts[k]=(counts[k]||0)+.25;}return {unknown:false,confidence:a.confidence==='verified'&&b.confidence==='verified'?'verified':'conditional on inferred legacy alleles',outcomes:counts};}
-export function breedingPreview(sire,dam,samples=128){const stream={rng:seed(`preview:${sire.id}:${dam.id}:${sire.genome.version}:${dam.genome.version}`)},values=[];for(let n=0;n<samples;n++)values.push(geneticCeilings(inheritGenome(stream,sire.genome,dam.genome)));const range=key=>{const a=values.map(v=>v[key]).sort((a,b)=>a-b);return {low:a[Math.floor(samples*.1)],high:a[Math.floor(samples*.9)],mean:Math.round(a.reduce((s,n)=>s+n,0)/samples)};};return {speed:range('speed'),stamina:range('stamina'),kick:range('kick'),loci:Object.fromEntries(Object.keys(LOCI).map(k=>[k,locusOutcomes(sire,dam,k)])),warning:'Simulated polygenic ranges, not guaranteed class or a real DNA prediction. Preview uses a separate RNG stream.'};}
+export function breedingPreview(sire,dam,samples=128){const sg=breedingGenome(sire),dg=breedingGenome(dam),stream={rng:seed(`preview:${sire.id}:${dam.id}:${sire.genome.version}:${dam.genome.version}`)},values=[];for(let n=0;n<samples;n++)values.push(geneticCeilings(inheritGenome(stream,sg,dg)));const range=key=>{const a=values.map(v=>v[key]).sort((a,b)=>a-b);return {low:a[Math.floor(samples*.1)],high:a[Math.floor(samples*.9)],mean:Math.round(a.reduce((s,n)=>s+n,0)/samples)};};return {speed:range('speed'),stamina:range('stamina'),kick:range('kick'),loci:Object.fromEntries(Object.keys(LOCI).map(k=>[k,locusOutcomes(sire,dam,k)])),warning:'Simulated polygenic ranges, not guaranteed class or a real DNA prediction. Preview uses a separate RNG stream.'};}

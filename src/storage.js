@@ -47,6 +47,7 @@ export function validate(w,{horseIds=null,resultIds=null}={}){
   if(!['EE','Ee','eE','ee'].includes(h.coat.extension)||!['AA','Aa','aA','aa'].includes(h.coat.agouti)||!Array.isArray(h.coat.legs)||h.coat.legs.length!==4)throw Error('Invalid coat genotype.');
   if(h.medicalCase&&!w.medical.some(m=>m.id===h.medicalCase&&m.horseId===h.id&&m.status==='active'))throw Error('Broken medical reference.');
   if(h.pregnancy&&!w.coverings.some(c=>c.id===h.pregnancy&&c.damId===h.id&&c.status==='pregnant'))throw Error('Broken pregnancy reference.');
+  if(genome?.potentialOffsets&&(typeof genome.potentialOffsets!=='object'||Array.isArray(genome.potentialOffsets)||Object.entries(genome.potentialOffsets).some(([key,v])=>!SKILLS.includes(key)||!Number.isFinite(v)||Math.abs(v)>250)))throw Error('Invalid inherited potential offsets.');
   if(!genome||genome.version!==1||!genome.loci||!genome.quantitativeHaplotypes||!h.development||!Array.isArray(h.traitInstances))throw Error('Missing V3 genome or development records.');
   for(const [key,def]of Object.entries(LOCI)){const locus=genome.loci[key];if(!locus||!Array.isArray(locus.alleles)||locus.alleles.length!==2||!['verified','inferred','unknown'].includes(locus.confidence)||locus.alleles.some(a=>a!==null&&!def.alleles.includes(a)))throw Error('Invalid genetic locus.');}
   if(incompatibleGenotypes(genome))throw Error('Incompatible viable genotype.');
